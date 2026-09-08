@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { ErrorBanner, FormField } from '../components/ui';
 
 const initial = {
@@ -16,6 +17,7 @@ const initial = {
 
 export default function Register() {
   const { register, user } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
 
   const [form, setForm] = useState(initial);
@@ -39,6 +41,7 @@ export default function Register() {
     const payload = { ...form, age: form.age === '' ? undefined : Number(form.age) };
     try {
       await register(payload);
+      toast.success('Account created — welcome!');
       navigate('/patient/appointments', { replace: true });
     } catch (err) {
       setError(err.message);

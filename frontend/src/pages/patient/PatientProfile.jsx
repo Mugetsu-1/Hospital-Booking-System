@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import api from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { ErrorBanner, SuccessBanner, FormField } from '../../components/ui';
 
 function fromUser(user) {
@@ -17,6 +18,7 @@ function fromUser(user) {
 
 export default function PatientProfile() {
   const { user, patchUser } = useAuth();
+  const toast = useToast();
   const [form, setForm] = useState(() => fromUser(user));
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -45,6 +47,7 @@ export default function PatientProfile() {
       patchUser(res.data.data);
       setForm(fromUser(res.data.data));
       setNotice('Profile updated.');
+      toast.success('Profile updated.');
     } catch (err) {
       setError(err.message || 'Could not update profile');
     } finally {

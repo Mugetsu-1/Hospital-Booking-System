@@ -1,21 +1,42 @@
 # Hospital Doctor Appointment Booking System
 
-A MERN-stack appointment booking system for a hospital, built for the ACHS Software
-Engineering lab. Patients search a doctor directory and book computed time slots,
-doctors run their daily/weekly/monthly clinic queue and write consultation records,
-and administrators manage the directory, patient accounts and the hospital-wide
-appointment ledger.
+**Software Engineering Lab Project — Full-Stack MERN Application**
 
+| | |
+| :--- | :--- |
+| **Author** | Student developer, single-student project |
+| **Repository** | [Mugetsu-1/Hospital-Booking-System](https://github.com/Mugetsu-1/Hospital-Booking-System) |
+| **Branch** | `main` · CI: [`.github/workflows/main.yml`](.github/workflows/main.yml) |
+| **Status** | ✅ 21 unit + 72 e2e assertions passing · production build green |
 
+> **Abstract.** A hospital appointment booking system where patients discover
+> doctors, book *computed* availability slots, and reschedule or cancel under
+> enforced business rules; doctors run day/week/month queues, confirm and
+> complete visits, and write governed consultation records; administrators
+> manage the directory, accounts and the hospital-wide ledger. Engineered with
+> a concurrency-safe slot model, JWT + RBAC, request validation and an optional
+> Redis / Socket.IO / Nodemailer tier that fails open.
+
+## Documentation
+
+| Document | Purpose |
+| :--- | :--- |
+| **[Project Summary](docs/PROJECT_SUMMARY.md)** | Lab-report-style narrative: abstract, SRS, modelling, database, architecture, implementation, QA, conclusion |
+| **[Diagrams](docs/README.md)** | Use Case · DFD L0–L2 · ERD · Sequence · Architecture (Mermaid) |
+| **[Test Matrix](backend/tests/TEST_MATRIX.md)** | Black-box matrix, equivalence partitioning, BVA, RBAC cases |
+| **[Screenshot checklist](screenshots/README.md)** | 24 named UI captures for the report |
 
 ## Stack
 
-| Layer    | Technology                                            |
-| -------- | ----------------------------------------------------- |
-| Frontend | React 18 + React Router 6, Vite dev server / bundler  |
-| Backend  | Node.js + Express 4, JWT auth, bcrypt password hashing |
-| Database | MongoDB with Mongoose 8                               |
-| Tests    | `node:test` (built-in runner), no extra tooling       |
+| Layer | Technology |
+| :--- | :--- |
+| Frontend | React 18 + React Router 6, Vite dev server / bundler |
+| Backend | Node.js + Express 4, JWT auth, bcrypt hashing, express-validator |
+| Database | MongoDB with Mongoose 8 |
+| Cache *(optional, fail-open)* | Redis — read-through for doctor lists & slot grids |
+| Realtime *(optional, fail-open)* | Socket.IO — `slots:changed` / `appointment:*` triggers |
+| Notifications *(optional, fail-open)* | Nodemailer — booking / status / notes e-mails |
+| Tests | `node:test` (built-in runner) + HTTP e2e suite |
 
 ## Prerequisites
 
@@ -46,6 +67,9 @@ other defaults work out of the box:
 | `JWT_SECRET`     | *(placeholder — change this)*                  | token signing key                |
 | `JWT_EXPIRES_IN` | `7d`                                           | token lifetime                   |
 | `CLIENT_URL`     | `http://localhost:5173`                        | CORS origin for the SPA          |
+| `REDIS_URL`      | *(empty — cache off)*                          | optional Redis cache             |
+| `MAIL_ENABLED`   | `false`                                        | switch on Nodemailer             |
+| `SMTP_HOST/PORT/USER/PASS`, `MAIL_FROM` | *(empty)*                    | SMTP transport for notifications |
 
 `backend/.env` is git-ignored, so the secret never leaves your machine.
 
@@ -104,10 +128,29 @@ npm run dev         # leave running
 npm run test:e2e    # in a second terminal
 ```
 
-It covers the functional and security cases documented in the report (§7.4, §7.6,
-§7.7) — 72 assertions including a genuine two-request race for a single slot and
-the 2-hour cancellation and 24-hour notes windows. It cleans up after itself, so
+It covers the functional and security cases documented in the QA matrix — 72
+assertions including a genuine two-request race for a single slot and the
+2-hour cancellation and 24-hour notes windows. It cleans up after itself, so
 it can be re-run without reseeding, and it exits non-zero on the first failure.
+
+## Optional services (fail-open)
+
+The app runs fully on just MongoDB. Redis, Socket.IO and Nodemailer enhance it
+but never block it — each degrades to a safe no-op when not configured:
+
+| Service | Enable by | Effect when enabled | Effect when disabled |
+| :--- | :--- | :--- | :--- |
+| Redis cache | `REDIS_URL=redis://127.0.0.1:6379` in `backend/.env` | Doctor lists & slot grids served from cache; invalidated on every write | Reads query MongoDB directly — identical responses |
+| Socket.IO | Always mounted on the API port | Live slot grid & queue refresh, toast-worthy triggers | Clients run REST-only; pages refresh on navigation |
+| Nodemailer | `MAIL_ENABLED=true` + `SMTP_HOST` + `MAIL_FROM` | Booking/reschedule/cancel/status/notes HTML e-mails | Mail calls log `(disabled)` and skip — booking flow untouched |
+
+Full environment reference lives in [`backend/.env.example`](backend/.env.example).
+
+## CI/CD
+
+[`.github/workflows/main.yml`](.github/workflows/main.yml) runs on every push/PR
+to `main`: Node.js 20, `npm ci` across root/backend/frontend, optional lint,
+the offline unit suite, and a production frontend build.
 
 ## What each role can do
 
@@ -130,19 +173,24 @@ backend/
     config/        environment and policy knobs (cancel cutoff, notes window)
     models/        User, Doctor, Appointment (+ partial unique slot index)
     controllers/   auth, doctors, patients, appointments
-    middleware/    JWT auth, role guards, central error handler
+    middleware/    JWT auth, role guards, express-validator, central error handler
     routes/        Express routers mounted under /api
-    utils/         pure slot-grid and date helpers, typed error factories
+    utils/         pure slot-grid and date helpers, typed error factories, Redis cache
+    services/      realtime (Socket.IO), mailer (Nodemailer)
   scripts/seed.js  demo data
-  tests/           node:test unit tests (offline)
+  tests/           node:test unit tests (offline) + TEST_MATRIX.md
     e2e/api.e2e.js end-to-end API suite (needs a running, seeded API)
 frontend/
   src/
     pages/         patient, doctor and admin screens
-    components/    shared UI primitives and route guards
-    context/       auth/session provider
+    components/    shared UI primitives, route guards, skeleton loaders
+    context/       auth/session provider, toast notification provider
     api/           axios client
+    realtime.js    Socket.IO client (fail-open)
     utils/         formatting and date-range helpers
+docs/              Mermaid diagrams + PROJECT_SUMMARY.md
+screenshots/       capture checklist for the report
+.github/workflows/ CI/CD pipeline
 ```
 
 ## Troubleshooting
@@ -161,4 +209,3 @@ target in [frontend/vite.config.js](./frontend/vite.config.js).
 
 **Login fails for every seeded account** — the database was seeded with a
 different `JWT_SECRET`, or not seeded at all. Run `npm run seed`.
-# Hospital-Booking-System

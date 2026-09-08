@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { ErrorBanner, FormField } from '../components/ui';
 
 export default function Login() {
   const { login, user } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -42,6 +44,7 @@ export default function Login() {
             ? '/admin'
             : '/patient/appointments';
       navigate(from && from !== '/login' ? from : home, { replace: true });
+      toast.success(`Signed in as ${u.name}.`);
     } catch (err) {
       setError(err.message);
     } finally {

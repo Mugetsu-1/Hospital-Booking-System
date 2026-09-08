@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Doctor = require('../models/Doctor');
 const Appointment = require('../models/Appointment');
+const cache = require('../utils/cache');
+const realtime = require('../services/realtime');
 const {
   asyncHandler,
   badRequest,
@@ -11,6 +13,15 @@ const {
   forbidden,
 } = require('../utils/errors');
 const { availableSlots, isRealDate } = require('../utils/slots');
+
+/** Stable, order-independent cache key fragment for a query-string object. */
+function qsKey(params = {}) {
+  return Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&');
+}
 
 function doctorSummary(doc) {
   const user = doc.userId || {};
@@ -64,7 +75,9 @@ const listDoctors = asyncHandler(async (req, res) => {
   const activeUserIds = new Set(users.map((u) => String(u._id)));
   const result = doctors.filter((d) => activeUserIds.has(String(d.userId._id)));
 
-  res.json({ count: result.length, data: result.map(doctorSummary) });
+  const payload = { count: result.length, data: result.map(doctorSummary) };
+  await cache.setJSON(`doctors:list:${qsKey(req.query)}`, payload);
+  res.json(payload);
 });
 
 /** GET /api/doctors/me — the doctor profile linked to the authenticated account. */
@@ -93,23 +106,32 @@ const getSlots = asyncHandler(async (req, res) => {
   const { date } = req.query;
   if (!isRealDate(date)) throw badRequest('A date query param (a real YYYY-MM-DD day) is required');
 
+  // Read-through cache: this endpoint is hit every time a patient opens the
+  // slot picker, so repeat reads are served straight from Redis when enabled.
+  const slotKey = `slots:${req.params.id}:${date}`;
+  const cached = await cache.getJSON(slotKey);
+  if (cached) return res.json(cached);
+
   const doctor = await Doctor.findOne({ _id: req.params.id, isActive: true });
   if (!doctor) throw notFound('Doctor not found');
 
+  let payload;
   if (!doctor.isAvailable) {
-    return res.json({ date, slots: [], bookedTimes: [], onLeave: true });
+    payload = { date, slots: [], bookedTimes: [], onLeave: true };
+  } else {
+    const booked = await Appointment.find({
+      doctorId: doctor._id,
+      date,
+      status: { $in: ['Pending', 'Confirmed'] },
+    }).select('startTime');
+
+    const bookedTimes = booked.map((a) => a.startTime);
+    const slots = availableSlots({ doctor, dateStr: date, bookedTimes });
+    payload = { date, slots, bookedTimes, onLeave: false };
   }
 
-  const booked = await Appointment.find({
-    doctorId: doctor._id,
-    date,
-    status: { $in: ['Pending', 'Confirmed'] },
-  }).select('startTime');
-
-  const bookedTimes = booked.map((a) => a.startTime);
-  const slots = availableSlots({ doctor, dateStr: date, bookedTimes });
-
-  res.json({ date, slots, bookedTimes, onLeave: false });
+  await cache.setJSON(slotKey, payload);
+  res.json(payload);
 });
 
 /**
@@ -162,6 +184,10 @@ const createDoctor = asyncHandler(async (req, res) => {
     // Populate the linked account so the response carries the same shape as
     // every other doctor endpoint (name/email/phone), not an empty summary.
     await doctor.populate('userId', 'name email phone');
+    // A new doctor appears in directory searches and slot lookups.
+    await cache.delPrefix('doctors:list:');
+    await cache.delPrefix('slots:');
+    realtime.slotsChanged(doctor._id);
     res.status(201).json({ data: doctorSummary(doctor) });
   } catch (err) {
     // Roll back the auth user if the directory profile failed to save.
@@ -215,6 +241,12 @@ const updateDoctor = asyncHandler(async (req, res) => {
 
   await doctor.save();
   const fresh = await Doctor.findById(doctor._id).populate('userId', 'name email phone');
+
+  // Schedule/fee/availability changes ripple through the directory and grids.
+  await cache.delPrefix('doctors:list:');
+  await cache.delPrefix(`slots:${doctor._id}`);
+  realtime.slotsChanged(doctor._id);
+
   res.json({ data: doctorSummary(fresh) });
 });
 
@@ -231,6 +263,10 @@ const setDoctorActive = asyncHandler(async (req, res) => {
 
   // Flip the linked auth account so the doctor can no longer log in.
   await User.updateOne({ _id: doctor.userId._id }, { $set: { isActive: req.body.isActive } });
+
+  await cache.delPrefix('doctors:list:');
+  await cache.delPrefix(`slots:${doctor._id}`);
+  realtime.slotsChanged(doctor._id);
 
   res.json({
     message: req.body.isActive ? 'Doctor account reactivated' : 'Doctor account deactivated',

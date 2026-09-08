@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { onRealtime } from '../../realtime';
+import { useToast } from '../../context/ToastContext';
+import { SkeletonCards } from '../../components/Skeleton';
 import { ErrorBanner, Loader, EmptyState, Modal, FormField } from '../../components/ui';
 import { todayStr, fmtTime, fmtMoney, to12h } from '../../utils/helpers';
 
@@ -25,11 +28,23 @@ function initials(name) {
 
 export default function BrowseDoctors() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState({ q: '', specialization: '', day: '', maxFee: '' });
   const [bookingFor, setBookingFor] = useState(null);
+  const [slotRefresh, setSlotRefresh] = useState(0);
+
+  // When a slot changes anywhere on the server, refresh the open picker so a
+  // just-booked slot disappears without a manual reload.
+  useEffect(() => {
+    return onRealtime('slots:changed', (payload) => {
+      if (bookingFor && payload && String(payload.doctorId) === String(bookingFor._id)) {
+        setSlotRefresh((n) => n + 1);
+      }
+    });
+  }, [bookingFor]);
 
   useEffect(() => {
     setLoading(true);
@@ -61,6 +76,7 @@ export default function BrowseDoctors() {
   };
 
   const handleBooked = () => {
+    toast.success('Appointment requested — awaiting doctor confirmation.');
     navigate('/patient/appointments', { state: { booked: true } });
   };
 
@@ -115,7 +131,7 @@ export default function BrowseDoctors() {
 
       {error && <ErrorBanner error={error} />}
 
-      {loading && <Loader />}
+      {loading && <SkeletonCards cards={3} />}
 
       {!loading && !error && doctors.length === 0 && (
         <EmptyState>No doctors match your filters.</EmptyState>
@@ -162,6 +178,7 @@ export default function BrowseDoctors() {
       {bookingFor && (
         <BookingModal
           doctor={bookingFor}
+          refreshSignal={slotRefresh}
           onBooked={handleBooked}
           onClose={() => setBookingFor(null)}
         />
@@ -170,7 +187,7 @@ export default function BrowseDoctors() {
   );
 }
 
-function BookingModal({ doctor, onBooked, onClose }) {
+function BookingModal({ doctor, onBooked, onClose, refreshSignal = 0 }) {
   const today = todayStr();
   const [date, setDate] = useState(today);
   const [slots, setSlots] = useState([]);
@@ -206,7 +223,7 @@ function BookingModal({ doctor, onBooked, onClose }) {
     return () => {
       active = false;
     };
-  }, [doctor._id, date]);
+  }, [doctor._id, date, refreshSignal]);
 
   const submitBooking = async () => {
     setError('');

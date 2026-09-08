@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../api/client';
+import { onRealtime } from '../../realtime';
+import { useToast } from '../../context/ToastContext';
 import { Badge, EmptyState, ErrorBanner, Loader, Modal, SuccessBanner } from '../../components/ui';
 import {
   fmtDate,
@@ -36,6 +38,7 @@ function blockValid(b) {
 }
 
 export default function AdminDashboard() {
+  const toast = useToast();
   const [tab, setTab] = useState('overview');
 
   const [doctors, setDoctors] = useState([]);
@@ -86,7 +89,10 @@ export default function AdminDashboard() {
     setNotice('');
     try {
       await fn();
-      if (message) setNotice(message);
+      if (message) {
+        setNotice(message);
+        toast.success(message);
+      }
       await load();
     } catch (e) {
       setError(e.message);
@@ -101,8 +107,28 @@ export default function AdminDashboard() {
     setNotesTarget(null);
     setError('');
     setNotice(message);
+    toast.success(message);
     await load();
   }
+
+  // Live refresh: appointment/slot changes made elsewhere (bookings, doctor
+  // schedule edits) refresh the admin ledger without a manual reload.
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    const events = [
+      'appointment:created',
+      'appointment:updated',
+      'appointment:status',
+      'appointment:notes',
+      'appointment:removed',
+    ];
+    const offs = [
+      ...events.map((ev) => onRealtime(ev, () => loadRef.current())),
+      onRealtime('slots:changed', () => loadRef.current()),
+    ];
+    return () => offs.forEach((off) => off());
+  }, []);
 
   function ask(config) {
     setConfirmAction(config);

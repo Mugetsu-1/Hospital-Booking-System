@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '../../api/client';
+import { onRealtime } from '../../realtime';
+import { useToast } from '../../context/ToastContext';
+import { SkeletonRows } from '../../components/Skeleton';
 import {
   ErrorBanner,
   Loader,
@@ -19,8 +22,18 @@ const TABS = [
   ['Cancelled', 'Cancelled'],
 ];
 
+const APPOINTMENT_EVENTS = [
+  'appointment:created',
+  'appointment:updated',
+  'appointment:status',
+  'appointment:notes',
+  'appointment:removed',
+];
+
 export default function MyAppointments() {
   const location = useLocation();
+  const toast = useToast();
+  const refreshRef = useRef(null);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,6 +65,14 @@ export default function MyAppointments() {
     const timer = setTimeout(refresh, 250);
     return () => clearTimeout(timer);
   }, [status, from, to]);
+
+  // Keep a live reference so the realtime listener always refetches with
+  // the current filters, then subscribe to appointment change triggers.
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const offs = APPOINTMENT_EVENTS.map((ev) => onRealtime(ev, () => refreshRef.current && refreshRef.current()));
+    return () => offs.forEach((off) => off());
+  }, []);
 
   const reload = async () => {
     setAction(null);
@@ -99,7 +120,7 @@ export default function MyAppointments() {
 
       {error && <ErrorBanner error={error} />}
 
-      {loading && <Loader />}
+      {loading && <SkeletonRows rows={4} columns={4} />}
 
       {!loading && !error && appointments.length === 0 && (
         <EmptyState>No appointments to show.</EmptyState>
@@ -181,6 +202,7 @@ export default function MyAppointments() {
           onDone={(msg) => {
             reload();
             setNotice(msg);
+            toast.success(msg);
           }}
         />
       )}

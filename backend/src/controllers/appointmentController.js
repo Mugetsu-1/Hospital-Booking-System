@@ -2,6 +2,9 @@ const mongoose = require('mongoose');
 const Appointment = require('../models/Appointment');
 const Doctor = require('../models/Doctor');
 const config = require('../config');
+const cache = require('../utils/cache');
+const realtime = require('../services/realtime');
+const mailer = require('../services/mailer');
 const {
   asyncHandler,
   badRequest,
@@ -113,7 +116,32 @@ const createAppointment = asyncHandler(async (req, res) => {
   });
 
   const full = await Appointment.findById(appointment._id).populate(POPULATE_DOCTOR);
-  res.status(201).json({ data: serialize(full) });
+  const serialized = serialize(full);
+
+  // A new booking consumes a slot: drop the cached slot grid for this doctor
+  // and push a lightweight "something changed" trigger over the socket layer.
+  await cache.delPrefix(`slots:${doctor._id}`);
+  realtime.slotsChanged(doctor._id);
+  realtime.emitAppointment('appointment:created', {
+    _id: appointment._id,
+    patientId: req.user._id,
+    doctorId: doctor._id,
+    status: 'Pending',
+    date,
+    startTime: time,
+  });
+
+  // Booking confirmation e-mail (no-op unless SMTP is configured).
+  mailer.sendBookingCreated({
+    patientName: req.user.name,
+    patientEmail: req.user.email,
+    doctorName: serialized.doctorName,
+    date,
+    time,
+    symptoms: String(symptoms).trim(),
+  });
+
+  res.status(201).json({ data: serialized });
 });
 
 /**
@@ -264,7 +292,21 @@ const reschedule = asyncHandler(async (req, res) => {
   await a.save();
 
   const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
-  res.json({ data: serialize(full) });
+  const serialized = serialize(full);
+
+  // The old slot is released and the new one consumed.
+  await cache.delPrefix(`slots:${a.doctorId}`);
+  realtime.slotsChanged(a.doctorId);
+  realtime.emitAppointment('appointment:updated', a);
+  mailer.sendRescheduled({
+    patientName: serialized.patientName,
+    patientEmail: full.patientId ? full.patientId.email : '',
+    doctorName: serialized.doctorName,
+    date,
+    time,
+  });
+
+  res.json({ data: serialized });
 });
 
 /**
@@ -280,7 +322,23 @@ const cancelAppointment = asyncHandler(async (req, res) => {
   a.status = 'Cancelled';
   a.cancelledBy = req.user.role;
   await a.save();
-  res.json({ message: 'Appointment cancelled. The slot has been released.', data: serialize(a) });
+
+  const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
+  const serialized = serialize(full);
+
+  // Cancelling returns the slot to the available pool.
+  await cache.delPrefix(`slots:${a.doctorId}`);
+  realtime.slotsChanged(a.doctorId);
+  realtime.emitAppointment('appointment:updated', a);
+  mailer.sendCancelled({
+    patientName: serialized.patientName,
+    patientEmail: full.patientId ? full.patientId.email : '',
+    doctorName: serialized.doctorName,
+    date: a.date,
+    time: a.startTime,
+  });
+
+  res.json({ message: 'Appointment cancelled. The slot has been released.', data: serialized });
 });
 
 /**
@@ -340,7 +398,22 @@ const updateStatus = asyncHandler(async (req, res) => {
   await a.save();
 
   const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
-  res.json({ data: serialize(full) });
+  const serialized = serialize(full);
+
+  // Status transitions can consume/release slots (Confirmed <-> Cancelled).
+  await cache.delPrefix(`slots:${a.doctorId}`);
+  realtime.slotsChanged(a.doctorId);
+  realtime.emitAppointment('appointment:status', a);
+  mailer.sendStatusChanged({
+    patientName: serialized.patientName,
+    patientEmail: full.patientId ? full.patientId.email : '',
+    doctorName: serialized.doctorName,
+    date: a.date,
+    time: a.startTime,
+    status: a.status,
+  });
+
+  res.json({ data: serialized });
 });
 
 /**
@@ -382,7 +455,19 @@ const saveNotes = asyncHandler(async (req, res) => {
   await a.save();
 
   const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
-  res.json({ data: serialize(full) });
+  const serialized = serialize(full);
+
+  // Consultation records don't touch slot availability, but the patient and
+  // the admin view should refresh (realtime trigger only, no cache flush).
+  realtime.emitAppointment('appointment:notes', a);
+  mailer.sendNotesReady({
+    patientName: serialized.patientName,
+    patientEmail: full.patientId ? full.patientId.email : '',
+    doctorName: serialized.doctorName,
+    date: a.date,
+  });
+
+  res.json({ data: serialized });
 });
 
 /**
@@ -399,6 +484,11 @@ const purgeAppointment = asyncHandler(async (req, res) => {
 
   const snapshot = serialize(a);
   await Appointment.deleteOne({ _id: a._id });
+
+  // Purging a live record releases its slot back into the pool.
+  await cache.delPrefix(`slots:${a.doctorId}`);
+  realtime.slotsChanged(a.doctorId);
+  realtime.emitAppointment('appointment:removed', a);
 
   res.json({
     message: LIVE.includes(snapshot.status)

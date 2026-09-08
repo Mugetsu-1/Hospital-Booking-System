@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../../api/client';
+import { onRealtime } from '../../realtime';
+import { useToast } from '../../context/ToastContext';
 import { Badge, EmptyState, ErrorBanner, Loader, Modal, SuccessBanner } from '../../components/ui';
 import {
   addDays,
@@ -65,6 +67,7 @@ function blockValid(row) {
 }
 
 export default function DoctorDashboard() {
+  const toast = useToast();
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState('');
@@ -149,7 +152,10 @@ export default function DoctorDashboard() {
     setNotice('');
     try {
       await fn();
-      if (message) setNotice(message);
+      if (message) {
+        setNotice(message);
+        toast.success(message);
+      }
       await loadList();
     } catch (e) {
       setError(e.message);
@@ -157,6 +163,26 @@ export default function DoctorDashboard() {
       setBusy(false);
     }
   }
+
+  // Live refresh: any appointment or slot change elsewhere in the hospital
+  // (e.g. a patient booking, an admin correction) refreshes this queue and
+  // profile without a manual reload. The ref keeps the current closures.
+  const liveRef = useRef({ loadList, loadProfile });
+  liveRef.current = { loadList, loadProfile };
+  useEffect(() => {
+    const events = [
+      'appointment:created',
+      'appointment:updated',
+      'appointment:status',
+      'appointment:notes',
+      'appointment:removed',
+    ];
+    const offs = [
+      ...events.map((ev) => onRealtime(ev, () => liveRef.current.loadList())),
+      onRealtime('slots:changed', () => liveRef.current.loadList()),
+    ];
+    return () => offs.forEach((off) => off());
+  }, []);
 
   function confirmAppt(a) {
     return run(() => api.patch(`/appointments/${a._id}/status`, { status: 'Confirmed' }), 'Appointment confirmed');
@@ -407,6 +433,7 @@ export default function DoctorDashboard() {
           onSaved={() => {
             setSettingsOpen(false);
             loadProfile();
+            toast.success('Schedule settings saved');
           }}
           onError={(m) => setError(m)}
           onBusy={setBusy}

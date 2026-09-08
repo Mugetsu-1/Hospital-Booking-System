@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import api from '../api/client';
+import { connectRealtime, disconnectRealtime } from '../realtime';
 
 const AuthContext = createContext(null);
 
@@ -28,10 +29,12 @@ export function AuthProvider({ children }) {
         const u = res.data.user;
         setUser(u);
         localStorage.setItem('user', JSON.stringify(u));
+        connectRealtime(localStorage.getItem('token'));
       } catch {
         if (!active) return;
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        disconnectRealtime();
         setUser(null);
       } finally {
         if (active) setLoading(false);
@@ -40,6 +43,7 @@ export function AuthProvider({ children }) {
     boot();
     return () => {
       active = false;
+      disconnectRealtime();
     };
   }, []);
 
@@ -53,6 +57,7 @@ export function AuthProvider({ children }) {
     const res = await api.post('/auth/login', { email, password });
     const { token, user: u } = res.data;
     persist(token, u);
+    connectRealtime(token);
     return u;
   }
 
@@ -60,12 +65,14 @@ export function AuthProvider({ children }) {
     const res = await api.post('/auth/register', payload);
     const { token, user: u } = res.data;
     persist(token, u);
+    connectRealtime(token);
     return u;
   }
 
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    disconnectRealtime();
     setUser(null);
   }
 

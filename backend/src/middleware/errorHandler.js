@@ -30,7 +30,12 @@ function errorHandler(err, _req, res, _next) {
   }
 
   if (err instanceof HttpError || err.status) {
-    return res.status(err.status).json({ error: err.message, code: err.code });
+    return res.status(err.status).json({
+      error: err.message,
+      code: err.code,
+      // Validation middleware attaches a `details` array of field messages.
+      ...(Array.isArray(err.details) && err.details.length ? { details: err.details } : {}),
+    });
   }
 
   console.error('[error]', err);
