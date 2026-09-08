@@ -6,8 +6,7 @@ doctors run their daily/weekly/monthly clinic queue and write consultation recor
 and administrators manage the directory, patient accounts and the hospital-wide
 appointment ledger.
 
-The full requirements, design, implementation and test documentation is in
-[gemini-code-1788601228978.md](./gemini-code-1788601228978.md).
+
 
 ## Stack
 
