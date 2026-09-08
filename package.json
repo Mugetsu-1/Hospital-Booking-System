@@ -1,0 +1,17 @@
+{
+  "name": "hospital-appointment-booking-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hospital Doctor Appointment Booking System - Software Engineering Lab Project",
+  "scripts": {
+    "setup": "npm install && npm run setup --prefix backend && npm run setup --prefix frontend",
+    "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "seed": "npm run seed --prefix backend",
+    "test": "npm test --prefix backend",
+    "test:e2e": "npm run test:e2e --prefix backend",
+    "build": "npm run build --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
