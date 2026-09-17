@@ -8,6 +8,16 @@
  */
 import { io } from 'socket.io-client';
 
+function socketUrl() {
+  const apiBase = import.meta.env.VITE_API_URL;
+  if (!apiBase || apiBase.startsWith('/')) return undefined;
+  try {
+    return new URL(apiBase).origin;
+  } catch {
+    return undefined;
+  }
+}
+
 let socket = null;
 
 /** Connect with the current JWT. Safe to call repeatedly. */
@@ -15,12 +25,13 @@ export function connectRealtime(token) {
   if (!token) return null;
   if (socket) return socket;
   try {
-    // No explicit URL => same origin. In dev, Vite proxies /socket.io (WS)
-    // to the API; in production the bundle is served from the API origin.
-    socket = io({
+    socket = io(socketUrl(), {
       path: '/socket.io',
-      transports: ['websocket'],
-      reconnection: false,
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1000,
+      timeout: 10000,
       auth: { token },
     });
 

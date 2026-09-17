@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: hospital-booking-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: CLIENT_URL
+        sync: false
+      - key: REDIS_URL
+        value: ''
+      - key: MAIL_ENABLED
+        value: false
+      - key: CACHE_TTL_SECONDS
+        value: 60

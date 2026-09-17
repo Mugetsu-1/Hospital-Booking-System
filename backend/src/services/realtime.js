@@ -22,9 +22,24 @@ function refId(ref) {
 function init(httpServer) {
   if (!httpServer || io) return io;
   try {
+    // In production (Vercel frontend + Render backend) the browser origin
+    // differs from the API origin, so Socket.IO CORS must allow it.
+    // CLIENT_URL is the canonical frontend URL; we also allow any
+    // *.vercel.app preview deployment. REST CORS lives in src/app.js.
+    const allowedOrigins = [config.clientUrl, /\.vercel\.app$/];
     io = new Server(httpServer, {
       path: '/socket.io',
-      cors: { origin: '*', methods: ['GET', 'POST'] },
+      cors: {
+        origin: (origin, cb) => {
+          if (!origin) return cb(null, true);
+          const ok = allowedOrigins.some((a) =>
+            a instanceof RegExp ? a.test(origin) : a === origin
+          );
+          return cb(null, ok ? true : false);
+        },
+        methods: ['GET', 'POST'],
+        credentials: true,
+      },
     });
 
     io.use((socket, next) => {
