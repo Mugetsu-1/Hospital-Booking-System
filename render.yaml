@@ -5,8 +5,10 @@ services:
     rootDir: backend
     # --include=dev keeps the Prisma CLI available even though NODE_ENV is
     # 'production'; db:setup generates the client, pushes the schema and
-    # creates the partial unique index for live appointment slots.
-    buildCommand: npm install --include=dev && npm run db:setup
+    # creates the partial unique index for live appointment slots. The final
+    # seed (SEED_RESET=false) inserts the demo accounts only when missing — it
+    # never wipes existing data — so the deployed app always has valid logins.
+    buildCommand: npm install --include=dev && npm run db:setup && SEED_RESET=false npm run seed
     startCommand: npm start
     healthCheckPath: /api/health
     plan: free

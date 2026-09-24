@@ -9,13 +9,18 @@ const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
+// Restrict browser origins to the configured frontend plus any *.vercel.app
+// preview deployment; non-browser callers (curl, CI, the health probe) send
+// no Origin and are allowed. Mirrors the Socket.IO CORS in services/realtime.js.
+const allowedOrigins = [config.clientUrl, /\.vercel\.app$/];
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Allow the configured client plus any non-browser (curl/tests) call.
-      const allowed = [config.clientUrl];
-      if (!origin || allowed.includes(origin)) return cb(null, true);
-      return cb(null, true); // keep the lab simple; tighten before production
+      if (!origin) return cb(null, true);
+      const ok = allowedOrigins.some((a) =>
+        a instanceof RegExp ? a.test(origin) : a === origin
+      );
+      return cb(null, ok);
     },
     credentials: true,
   })
