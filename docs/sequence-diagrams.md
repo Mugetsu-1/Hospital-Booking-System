@@ -9,7 +9,7 @@ sequenceDiagram
   participant C as Express Controller
   participant V as Validation Middleware
   participant R as Redis Cache (optional)
-  participant D as MongoDB
+  participant D as PostgreSQL
   participant S as Socket.IO
   participant M as Mailer (optional)
 
@@ -37,7 +37,7 @@ sequenceDiagram
   autonumber
   participant D as Doctor (React SPA)
   participant C as Express Controller
-  participant P as MongoDB
+  participant P as PostgreSQL
   participant S as Socket.IO
   participant M as Mailer (optional)
 
@@ -67,7 +67,7 @@ sequenceDiagram
   participant P as Patient (React SPA)
   participant C as Express Controller
   participant R as Redis Cache (optional)
-  participant D as MongoDB
+  participant D as PostgreSQL
   participant S as Socket.IO
   participant M as Mailer (optional)
 
@@ -96,7 +96,7 @@ sequenceDiagram
   autonumber
   participant D as Doctor (React SPA)
   participant C as Express Controller
-  participant DB as MongoDB
+  participant DB as PostgreSQL
   participant S as Socket.IO
   participant M as Mailer (optional)
 

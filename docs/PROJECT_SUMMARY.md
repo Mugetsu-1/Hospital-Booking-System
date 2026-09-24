@@ -7,7 +7,7 @@
 | **Project** | Hospital Doctor Appointment Booking System |
 | **Repository** | `Mugetsu-1/Hospital-Booking-System` |
 | **Type** | Single-student software engineering lab project |
-| **Stack** | React 18 + Vite · Node.js + Express 4 · MongoDB (Mongoose 8) |
+| **Stack** | React 18 + Vite · Node.js + Express 4 · PostgreSQL (Prisma 7) |
 | **Optional services** | Redis cache · Socket.IO realtime · Nodemailer SMTP (all fail-open) |
 | **Verification** | 21 unit tests + 72 end-to-end API assertions, all passing |
 
@@ -104,10 +104,10 @@ core booking behaviour.
 
 | NFR | Requirement | Evidence |
 | :--- | :--- | :--- |
-| **Security** | bcrypt hashing (10 rounds), signed JWT, RBAC role gates, inactive-account blocks | `middleware/auth.js`, `models/User.js` |
+| **Security** | bcrypt hashing (10 rounds), signed JWT, RBAC role gates, inactive-account blocks | `middleware/auth.js`, `utils/serialize.js` |
 | **Performance** | Read-heavy endpoints served < 200 ms via read-through Redis cache (optional) | `utils/cache.js` — slot grids + directory |
 | **Usability** | Responsive UI, toasts, confirm modals, skeleton loaders, instant realtime refresh | `context/ToastContext.jsx`, `components/Skeleton.jsx` |
-| **Reliability** | Atomic slot collision check + partial unique index; fail-open optional services | `models/Appointment.js`, `services/*` |
+| **Reliability** | Atomic slot collision check + partial unique index; fail-open optional services | `prisma/schema.prisma`, `src/db.js`, `services/*` |
 | **Testability** | Offline unit suite + full HTTP e2e suite | `tests/` (21 + 72 assertions) |
 
 ## 4. System Modeling
@@ -127,20 +127,23 @@ them as images):
 
 ## 5. Database Design
 
-MongoDB (Mongoose) with three collections — full field definitions in
-[`docs/erd.md`](./erd.md).
+PostgreSQL with three tables, defined once in
+[`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma) and pushed
+with Prisma — full field definitions in [`docs/erd.md`](./erd.md).
 
-| Collection | Purpose | Key fields |
+| Table | Purpose | Key columns |
 | :--- | :--- | :--- |
-| `Users` | Credentials + profile for all roles | `name, email (unique), passwordHash, role, phone, isActive` |
-| `Doctors` | Directory + schedule, linked to a user | `userId (unique), specialization, consultationFee, availableSlots[], isAvailable, isActive` |
-| `Appointments` | Bookings + consultation records | `patientId, doctorId, date, startTime, endTime, dateTime, status, diagnosis, prescription, consultationNotes, cancelledBy` |
+| `users` | Credentials + profile for all roles | `name, email (unique), password_hash, role (enum), phone, is_active` |
+| `doctors` | Directory + schedule, linked to a user | `user_id (unique FK), specialization, consultation_fee, available_slots (JSONB), is_available, is_active` |
+| `appointments` | Bookings + consultation records | `patient_id FK, doctor_id FK, date, start_time, end_time, date_time, status (enum), diagnosis, prescription, consultation_notes, cancelled_by` |
 
-**Concurrency design decision.** The `(doctorId, date, startTime)` triple has a
-*partial* unique index that only includes `Pending` / `Confirmed` documents.
+**Concurrency design decision.** The `(doctor_id, date, start_time)` triple has
+a *partial* unique index that only includes `Pending` / `Confirmed` rows.
 Cancelling an appointment therefore releases its slot automatically, and two
 simultaneous requests for the same slot can never both succeed — the second
-gets a duplicate-key `409`.
+gets a unique-violation `409` (Prisma error `P2002`). Prisma cannot express
+partial indexes in its schema language, so the index is created idempotently by
+`backend/scripts/db-setup.js` during `npm run db:setup`.
 
 ---
 ## 6. Architecture & Stack
@@ -150,15 +153,15 @@ Layered client–server architecture (full diagram: [`docs/architecture.md`](./a
 | Layer | Technology | Notes |
 | :--- | :--- | :--- |
 | Presentation | React 18 + Vite 5 + React Router 6, Axios | `pages/` per role, shared `components/`, `context/` session, `api/client.js` |
-| Application | Node.js + Express 4 | `routes/` → `controllers/` → `models/`; `middleware/` for auth, RBAC, validation, errors |
-| Data | MongoDB + Mongoose 8 | `Users`, `Doctors`, `Appointments` |
+| Application | Node.js + Express 4 | `routes/` → `controllers/` → Prisma client; `middleware/` for auth, RBAC, validation, errors |
+| Data | PostgreSQL + Prisma 7 (`@prisma/adapter-pg`) | `users`, `doctors`, `appointments` (Supabase or Render Postgres) |
 | Cache *(optional)* | Redis | Read-through for doctor lists & slot grids; prefix invalidation on writes; 60 s TTL safety net |
 | Realtime *(optional)* | Socket.IO | Same HTTP port, JWT handshake; lightweight `slots:changed` / `appointment:*` triggers; clients refetch via REST |
 | Notifications *(optional)* | Nodemailer | HTML booking/reschedule/cancel/status/notes e-mails; console-log fallback |
-| CI/CD | GitHub Actions | `.github/workflows/main.yml` — install, lint (if present), unit tests, production build |
+| CI/CD | GitHub Actions | `.github/workflows/main.yml` — Postgres service, schema push, seed, unit tests, e2e API suite, production build |
 
 **Fail-open principle.** None of the optional layers is a hard dependency:
-`REDIS_URL` unset → direct Mongo reads; SMTP unset → mail logs and skips;
+`REDIS_URL` unset → direct PostgreSQL reads; SMTP unset → mail logs and skips;
 Socket.IO unavailable → client falls back to REST-only. This keeps local
 development (and grading) deterministic while the architecture still
 demonstrates modern production patterns.
@@ -168,15 +171,21 @@ demonstrates modern production patterns.
 ### Backend layout
 
 ```
-backend/src/
-  config/       env + policy knobs (cancel cutoff, notes window, cache TTL)
-  models/       User, Doctor, Appointment (+ partial unique slot index)
-  controllers/  auth, patients, doctors, appointments
-  middleware/   auth (JWT + RBAC), validate (express-validator), errorHandler
-  routes/       Express routers mounted under /api
-  utils/        pure slot-grid & date helpers, typed errors, Redis cache wrapper
-  services/     realtime (Socket.IO), mailer (Nodemailer)
-scripts/seed.js demo hospital (1 admin, 4 doctors, 3 patients, sample bookings)
+backend/
+  prisma/schema.prisma  PostgreSQL tables, enums and indexes
+  prisma.config.ts      Prisma 7 config (DATABASE_URL, schema path)
+  src/
+    db.js             Prisma 7 client + pg driver adapter + slot-index bootstrap
+    config/           env + policy knobs (cancel cutoff, notes window, cache TTL)
+    domain/           appointment lifecycle state machine (pure, unit-tested)
+    controllers/      auth, patients, doctors, appointments
+    middleware/       auth (JWT + RBAC), validate (express-validator), errorHandler
+    routes/           Express routers mounted under /api
+    utils/            slot-grid & date helpers, serializers, UUID checks, Redis cache
+    services/         realtime (Socket.IO), mailer (Nodemailer)
+  scripts/
+    db-setup.js       creates the partial unique index Prisma cannot express
+    seed.js           demo hospital (1 admin, 4 doctors, 3 patients, sample bookings)
 ```
 
 ### Frontend layout
@@ -192,8 +201,9 @@ frontend/src/
 
 ### Security implementation
 
-- **Passwords** — bcrypt, 10 salt rounds; hash never serialised (`select:false`
-  + JSON transform), verified by e2e `SEC-03`.
+- **Passwords** — bcrypt, 10 salt rounds; the hash is stripped by the
+  `publicUser()` serializer before any row leaves the API, verified by e2e
+  `SEC-03`.
 - **Sessions** — signed JWT (`HS256` via `jsonwebtoken`), 7-day expiry, Bearer
   header; `requireAuth` reloads the user and blocks deactivated accounts.
 - **RBAC** — `requireRole('patient' | 'doctor' | 'admin')` on top of `requireAuth`;
@@ -223,7 +233,7 @@ Full black-box matrix, equivalence partitioning and boundary-value analysis:
 | Suite | Command | Coverage | Result |
 | :--- | :--- | :--- | :--- |
 | Unit (offline) | `npm test` | Slot-grid maths (grid expansion, eligibility, past-slot dropping), date validation, status-transition state machine | **21/21 pass** |
-| End-to-end | `npm run test:e2e` | Auth & sessions, RBAC (14 negative cases), directory & filters, slot computation, double-booking + race, lifecycle & 24 h window (time-travelled), cutoff, reschedule & slot release, purge, profile CRUD, registration | **72/72 pass** |
+| End-to-end | `npm run test:e2e` | Auth & sessions, RBAC (14 negative cases), directory & filters, slot computation, double-booking + race, lifecycle & 24 h window (time-travelled), cutoff, reschedule & slot release, purge, profile CRUD, registration — against PostgreSQL | **72/72 pass** |
 | Build | `npm run build` | Frontend production bundle | passes (134 modules) |
 
 Highlight assertions:
@@ -231,8 +241,8 @@ Highlight assertions:
 - **TC-13** — two concurrent HTTP requests for one slot: exactly one `201`,
   the other `409` (unique-index backstop).
 - **TC-22 / TC-21** — the 2-hour cancellation cutoff and the 24-hour notes
-  window are exercised by moving documents backwards in Mongo ("time travel"),
-  so no real waiting is needed.
+  window are exercised by inserting/back-dating rows directly through Prisma
+  ("time travel"), so no real waiting is needed.
 - **SEC-01 … SEC-17** — every unauthorized-access class returns 401/403/404
   as specified, including role-escalation attempts.
 
@@ -262,8 +272,8 @@ assertions plus a documented test matrix.
 
 - Turning a business rule ("a slot cannot be double-booked") into a *database*
   constraint plus an application check, and proving it under concurrency.
-- Modelling a document database without losing relational integrity
-  (foreign-key references + `populate()`).
+- Modelling a relational schema (Prisma) with real foreign keys, enums and
+  cascades — plus the one partial-index constraint the ORM cannot express.
 - Designing state machines (lifecycle transitions, cancellation cutoff, notes
   window) and making them testable with time-travel fixtures.
 - Layering auth: JWT sessions, RBAC gates, ownership checks — and verifying

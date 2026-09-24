@@ -30,7 +30,7 @@ flowchart LR
     end
   end
 
-  DB[("Appointments\n(unique index:\ndoctorId+date+startTime)")]
+  DB[("appointments\n(partial unique index:\ndoctor_id+date+start_time)")]
   C[(Redis·optional)]
   RT["Socket.IO"]
   MX["Mailer (optional)"]
@@ -62,14 +62,16 @@ flowchart LR
 
 ## Concurrency guarantee
 
-The same `(doctorId, date, startTime)` cannot be held by two **live**
+The same `(doctor_id, date, start_time)` cannot be held by two **live**
 appointments (Pending/Confirmed). Two layers enforce it:
 
 1. **Application check** (`assertSlotFree`) — rejects a booked slot with 409.
-2. **Partial unique index** on `Appointments` —
-   `{ doctorId: 1, date: 1, startTime: 1 }` unique where
-   `status ∈ { Pending, Confirmed }`. The moment an appointment is Cancelled it
-   leaves the index and the slot returns to the pool (see `models/Appointment.js`).
+2. **Partial unique index** on `appointments` —
+   `UNIQUE(doctor_id, date, start_time) WHERE status IN ('Pending', 'Confirmed')`.
+   The moment an appointment is Cancelled it leaves the index and the slot
+   returns to the pool. Prisma cannot declare partial indexes, so
+   `backend/scripts/db-setup.js` creates it during `npm run db:setup`; a
+   violation surfaces as Prisma `P2002` → `409` in the error handler.
 
 The e2e suite proves both layers with a genuine two-request race for a single
 slot (`TC-13`), and the returned-slot re-booking flows (`TC-24`, `TC-25`).

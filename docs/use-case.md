@@ -44,8 +44,8 @@ flowchart TD
   Administrator --> UC16
   Administrator --> UC17
 
-  UC3 ..> UC4 : "<<include>>"
-  UC8 ..> UC9 : "<<include>>"
+  UC4 -.->|"«include»"| UC3
+  UC9 -.->|"«include»"| UC8
 ```
 
 ## Actor boundaries

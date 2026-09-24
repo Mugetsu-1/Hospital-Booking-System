@@ -27,7 +27,7 @@ save, and what the image must prove.
 
 | # | File name | Journey | Must show |
 | :--- | :--- | :--- | :--- |
-| 11 | `11-doctor-queue-day.png` | Login `mehta@hospital.com` → Day view | Queue with Pending/Confirmed rows, status filter chips |
+| 11 | `11-doctor-queue-day.png` | Login `mehta@hospital.com` → Day view | Queue with Pending/Confirmed rows, status filter chips, **patient age / gender / phone under each name** (data-shape fix) |
 | 12 | `12-doctor-week-month.png` | Switch to Week and Month views | Ranged navigation, inclusive date windows |
 | 13 | `13-confirm-complete.png` | Confirm a Pending booking, then Start & complete | Status transitions, consultation form (diagnosis/prescription/notes) |
 | 14 | `14-notes-window.png` | Open "Edit record" on a Completed visit | Record editing UI + saved toast |
@@ -37,11 +37,11 @@ save, and what the image must prove.
 
 | # | File name | Journey | Must show |
 | :--- | :--- | :--- | :--- |
-| 16 | `16-admin-overview.png` | Login `admin@hospital.com` → Overview | Statistics cards (totals, today, revenue, status split) |
+| 16 | `16-admin-overview.png` | Login `admin@hospital.com` → Overview | Statistics cards (totals, today, **non-zero revenue** — data-shape fix, status split) |
 | 17 | `17-admin-doctors.png` | Doctors tab | Directory with create/edit/deactivate controls |
 | 18 | `18-admin-create-doctor.png` | Create a doctor | Doctor form with weekly working blocks |
 | 19 | `19-admin-patients.png` | Patients tab | Account list, edit + deactivate actions |
-| 20 | `20-admin-ledger.png` | Appointments tab | Hospital-wide ledger with filters |
+| 20 | `20-admin-ledger.png` | Appointments tab | Hospital-wide ledger with filters, **consultation fee populated per row** (not "—" — data-shape fix) |
 | 21 | `21-admin-purge.png` | Purge a medical record (confirm modal) | Confirmation and removed row |
 
 ## Real-time & UX evidence (optional)
@@ -58,3 +58,12 @@ save, and what the image must prove.
 - [ ] Full-resolution PNG (no downscaling)
 - [ ] No sensitive data visible (use seeded demo accounts only)
 - [ ] Real-time capture #22 if the optional Socket.IO evidence is included
+
+### Data-shape fix verification (post-migration)
+
+The MongoDB → PostgreSQL migration flattened the appointment API payload, and
+three UI spots were fixed to read the new flat fields. Confirm each visually:
+
+- [x] **#16** Admin Overview — revenue card shows a **non-zero** total (was always `Rs. 0`)
+- [x] **#20** Admin ledger — every row's **consultation fee is populated** (was always `—`)
+- [x] **#11** Doctor queue — each patient row shows **age / gender / phone** (was blank)

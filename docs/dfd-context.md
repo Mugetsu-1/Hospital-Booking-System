@@ -15,7 +15,7 @@ flowchart LR
   end
 
   subgraph store["Data store"]
-    DB[("MongoDB\nUsers · Doctors · Appointments")]
+    DB[("PostgreSQL — Supabase / Render\nusers · doctors · appointments")]
   end
 
   P -->|"1  credentials, profile,\nbooking request"| API
@@ -25,7 +25,7 @@ flowchart LR
   A -->|"5  directory & account\nmanagement commands"| API
   API -->|"6  ledger, reports"| A
 
-  API -->|"7  read/write documents"| DB
+  API -->|"7  SQL read/write (Prisma)"| DB
   DB -->|"8  query results"| API
 
   API -.->|"9  cache slots & directory\n(optional Redis)"| C[(Redis)]
@@ -42,7 +42,7 @@ flowchart LR
 | 4 | Engine → Doctor | Day/week/month queue, patient summaries, record edit window state |
 | 5 | Admin → Engine | Doctor create/update/deactivate, patient account management, record purge |
 | 6 | Engine → Admin | Hospital-wide appointment ledger, filters by status/doctor/patient/date |
-| 7/8 | Engine ↔ MongoDB | CRUD on `Users`, `Doctors`, `Appointments` collections |
+| 7/8 | Engine ↔ PostgreSQL | CRUD on `users`, `doctors`, `appointments` tables (Prisma 7) |
 | 9/10 | Engine ↔ Redis (optional) | Read-through cache of doctor lists and slot grids; prefix-invalidated on writes |
 
 The single process boundary means every flow crosses authentication +

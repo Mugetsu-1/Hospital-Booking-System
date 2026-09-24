@@ -1,8 +1,9 @@
 # System Architecture
 
-Layered architecture with a React SPA, an Express REST API, MongoDB, and three
-**optional** companion services (Redis, Socket.IO, Nodemailer). Optional layers
-are fail-open — the application runs identically when they are not configured.
+Layered architecture with a React SPA, an Express REST API, PostgreSQL
+(Supabase / Render), and three **optional** companion services (Redis,
+Socket.IO, Nodemailer). Optional layers are fail-open — the application runs
+identically when they are not configured.
 
 ```mermaid
 flowchart TB
@@ -16,26 +17,27 @@ flowchart TB
     R["routes/  (REST under /api)"]
     MW["middleware/\nJWT auth · RBAC · express-validator · error handler"]
     C["controllers/\nauth · patients · doctors · appointments"]
-    U["utils/  slot grid · date helpers · errors"]
+    U["utils/  slot grid · date helpers · serializers · errors"]
     S["services/\nrealtime.js · mailer.js"]
   end
 
   subgraph data["Data Layer"]
-    DB[(MongoDB Atlas / local\nUsers · Doctors · Appointments)]
+    DB[(PostgreSQL — Supabase / Render\nusers · doctors · appointments)]
+    PRISMA["db.js\nPrisma 7 + @prisma/adapter-pg"]
     CACHE[(Redis · optional\nslot grids · directory)]
   end
 
   EMAIL["SMTP provider · optional\n(Mailtrap / real SMTP)"]
 
-  FE -->|"HTTP REST /api + WS /socket.io"| M
-  RT -.->|"Socket.IO events"| M
+  FE -->|"HTTP REST /api + WS /socket.io"| MW
+  RT -.->|"Socket.IO events"| S
+  MW --> R
   R --> C
-  M --> R
   C --> U
-  C --> DB
+  C --> PRISMA
+  PRISMA -->|"SQL over pg pool"| DB
   C -.->|"read-through cache"| CACHE
   C -.->|"publish events"| S
-  C -.->|"queued mail"| M
   S -.->|"events broadcast"| RT
   S -.->|"emails"| EMAIL
 ```
@@ -46,16 +48,24 @@ flowchart TB
 | :--- | :--- | :--- |
 | Frontend | React 18, Vite 5, React Router 6, Axios | SPA, client state via React context, route guards |
 | API | Node.js, Express 4 | REST controllers, JWT auth, RBAC, validation |
-| Data | MongoDB + Mongoose 8 | `Users`, `Doctors`, `Appointments` documents |
+| Data | PostgreSQL + Prisma 7 (`@prisma/adapter-pg`) | Relational `users`, `doctors`, `appointments` tables |
 | Cache | Redis (optional) | Read-through cache for doctor lists & slot grids |
 | Realtime | Socket.IO (optional) | `slots:changed`, `appointment:*` triggers |
 | Notifications | Nodemailer (optional) | Booking/reschedule/cancel/status/notes e-mails |
-| CI/CD | GitHub Actions | Lint, unit tests, production build on push/PR |
+| CI/CD | GitHub Actions | Schema push, seed, unit tests, e2e API suite, production build |
 
 ## Optional-layer behaviour
 
 | Layer | Enabled when | When disabled |
 | :--- | :--- | :--- |
-| Redis | `REDIS_URL` set | Reads query MongoDB directly — same responses |
+| Redis | `REDIS_URL` set | Reads query PostgreSQL directly — same responses |
 | Socket.IO | always mounted | clients auto-fallback to REST polling |
 | Nodemailer | `MAIL_ENABLED=true` + SMTP host/from | mail calls log and skip; booking flow unaffected |
+
+## Deployment topology
+
+| Component | Host | Notes |
+| :--- | :--- | :--- |
+| React SPA | Vercel | `VITE_API_URL` points at the Render API (`/api`) |
+| Express API | Render Web Service (`render.yaml`) | Build runs `npm run db:setup`; health probe `/api/health` |
+| PostgreSQL | Supabase *or* Render Postgres | One `DATABASE_URL` connection string; schema pushed by Prisma |
