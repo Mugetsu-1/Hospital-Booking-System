@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const User = require('../models/User');
+const { prisma } = require('../db');
 const { buildAuthPayload, signToken } = require('../middleware/auth');
 const {
   asyncHandler,
@@ -8,6 +8,12 @@ const {
   forbidden,
   unauthorized,
 } = require('../utils/errors');
+
+/** Normalise an optional numeric field (empty strings become NULL). */
+function optionalInt(value) {
+  if (value === undefined || value === null || value === '') return null;
+  return Number(value);
+}
 
 /**
  * POST /api/auth/register
@@ -42,27 +48,30 @@ const register = asyncHandler(async (req, res) => {
     }
   }
 
-  const existing = await User.findOne({ email: String(email).toLowerCase() });
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (existing) throw conflict('An account with this email already exists');
 
   const passwordHash = await bcrypt.hash(password, 10);
 
   let user;
   try {
-    user = await User.create({
-      name: String(name).trim(),
-      email,
-      passwordHash,
-      role,
-      phone,
-      age,
-      gender,
-      address,
-      emergencyContact,
+    user = await prisma.user.create({
+      data: {
+        name: String(name).trim(),
+        email: normalizedEmail,
+        passwordHash,
+        role,
+        phone,
+        age: optionalInt(age),
+        gender,
+        address,
+        emergencyContact,
+      },
     });
   } catch (err) {
-    // Race-condition guard on the unique email index.
-    if (err.code === 11000) throw conflict('An account with this email already exists');
+    // Race-condition guard on the unique email constraint.
+    if (err.code === 'P2002') throw conflict('An account with this email already exists');
     throw err;
   }
 
@@ -77,10 +86,12 @@ const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) throw badRequest('email and password are required');
 
-  const user = await User.findOne({ email: String(email).toLowerCase() }).select('+passwordHash');
+  const user = await prisma.user.findUnique({
+    where: { email: String(email).trim().toLowerCase() },
+  });
   if (!user) throw unauthorized('Invalid email or password');
 
-  const ok = await user.comparePassword(password);
+  const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) throw unauthorized('Invalid email or password');
 
   if (user.isActive === false) {

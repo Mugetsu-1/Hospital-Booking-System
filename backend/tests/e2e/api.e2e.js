@@ -2,12 +2,13 @@
  * End-to-end API verification suite (report §7.7).
  *
  * Unlike the unit tests under tests/, this suite is NOT offline: it drives the
- * real HTTP API and also opens a direct Mongo connection so it can "time travel"
- * a document backwards to exercise the 2-hour cancellation cutoff and the
- * 24-hour notes window without waiting for real time to pass.
+ * real HTTP API and also opens a direct Prisma/PostgreSQL connection so it can
+ * "time travel" a row backwards to exercise the 2-hour cancellation cutoff and
+ * the 24-hour notes window without waiting for real time to pass.
  *
- * Prerequisites — MongoDB running, `npm run seed`, and the API started
- * (`npm run dev` or `npm start`). Then:
+ * Prerequisites — PostgreSQL reachable via DATABASE_URL, the schema pushed
+ * (`npm run db:setup`), a seeded database (`npm run seed`), and the API
+ * started (`npm run dev` or `npm start`). Then:
  *
  *     npm run test:e2e
  *
@@ -15,8 +16,8 @@
  * and exits non-zero if any assertion fails. Re-run `npm run seed` afterwards
  * to restore the pristine demo data.
  */
-const mongoose = require('mongoose');
 const config = require('../../src/config');
+const { prisma, disconnectDB } = require('../../src/db');
 
 const BASE = `http://127.0.0.1:${config.port}/api`;
 
@@ -129,7 +130,7 @@ function weekdayOf(dateStr) {
   const doctorCreatesDoctor = await req('POST', '/doctors', { token: doctor.token, body: { name: 'x' } });
   check('SEC-08 doctor cannot create doctors', doctorCreatesDoctor.status === 403, `status ${doctorCreatesDoctor.status}`);
 
-  const patientPurge = await req('DELETE', '/appointments/000000000000000000000000', { token: alice.token });
+  const patientPurge = await req('DELETE', '/appointments/00000000-0000-4000-8000-000000000000', { token: alice.token });
   check('SEC-09 patient cannot purge records', patientPurge.status === 403, `status ${patientPurge.status}`);
 
   console.log('\n=== C. Doctor directory and computed slots (TC-05..TC-08) ===');
@@ -167,15 +168,15 @@ function weekdayOf(dateStr) {
   );
 
   const target = dirRes.json.data.find((d) => /Mehta/i.test(d.doctorName)) || dirRes.json.data[0];
-  const doctorDoc = await req('GET', `/doctors/${target._id}`, { token: alice.token });
-  check('TC-08 single doctor profile', doctorDoc.status === 200 && doctorDoc.json.data._id === target._id, `status ${doctorDoc.status}`);
+  const doctorDoc = await req('GET', `/doctors/${target.id}`, { token: alice.token });
+  check('TC-08 single doctor profile', doctorDoc.status === 200 && doctorDoc.json.data.id === target.id, `status ${doctorDoc.status}`);
 
   // Find a future date with at least three free slots for this doctor.
   let slotDate = null;
   let slots = [];
   for (let i = 1; i <= 21 && slots.length < 3; i += 1) {
     const candidate = shift(i);
-    const r = await req('GET', `/doctors/${target._id}/slots?date=${candidate}`, { token: alice.token });
+    const r = await req('GET', `/doctors/${target.id}/slots?date=${candidate}`, { token: alice.token });
     if (r.status === 200 && (r.json.slots || []).length >= 3) {
       slotDate = candidate;
       slots = r.json.slots;
@@ -184,7 +185,7 @@ function weekdayOf(dateStr) {
   check('TC-08b slot grid computed from weekly blocks', Boolean(slotDate), slotDate ? `${slotDate} → ${slots.length} slots` : 'no date found');
   if (!slotDate) throw new Error('cannot continue without a bookable date');
 
-  const badDateParam = await req('GET', `/doctors/${target._id}/slots?date=2026-13-40`, { token: alice.token });
+  const badDateParam = await req('GET', `/doctors/${target.id}/slots?date=2026-13-40`, { token: alice.token });
   check(
     'BV-01 impossible calendar date rejected',
     badDateParam.status === 400,
@@ -195,12 +196,12 @@ function weekdayOf(dateStr) {
 
   const booked = await req('POST', '/appointments', {
     token: alice.token,
-    body: { doctorId: target._id, date: slotDate, time: slots[0].startTime, symptoms: 'Chest tightness after exercise' },
+    body: { doctorId: target.id, date: slotDate, time: slots[0].startTime, symptoms: 'Chest tightness after exercise' },
   });
   check('TC-10 patient books a free slot', booked.status === 201 && booked.json.data.status === 'Pending', `status ${booked.status}`);
-  const apptId = booked.json.data && booked.json.data._id;
+  const apptId = booked.json.data && booked.json.data.id;
 
-  const slotsAfter = await req('GET', `/doctors/${target._id}/slots?date=${slotDate}`, { token: alice.token });
+  const slotsAfter = await req('GET', `/doctors/${target.id}/slots?date=${slotDate}`, { token: alice.token });
   check(
     'TC-11 booked slot disappears from availability',
     slotsAfter.json.slots.every((s) => s.startTime !== slots[0].startTime) &&
@@ -210,15 +211,15 @@ function weekdayOf(dateStr) {
 
   const dupe = await req('POST', '/appointments', {
     token: bob.token,
-    body: { doctorId: target._id, date: slotDate, time: slots[0].startTime },
+    body: { doctorId: target.id, date: slotDate, time: slots[0].startTime },
   });
   check('TC-12 second patient cannot take a held slot', dupe.status === 409, `status ${dupe.status} ${dupe.json && dupe.json.error}`);
 
   // True race: two patients fire at the same instant for one slot.
   const raceTime = slots[1].startTime;
   const [raceA, raceB] = await Promise.all([
-    req('POST', '/appointments', { token: alice.token, body: { doctorId: target._id, date: slotDate, time: raceTime } }),
-    req('POST', '/appointments', { token: bob.token, body: { doctorId: target._id, date: slotDate, time: raceTime } }),
+    req('POST', '/appointments', { token: alice.token, body: { doctorId: target.id, date: slotDate, time: raceTime } }),
+    req('POST', '/appointments', { token: bob.token, body: { doctorId: target.id, date: slotDate, time: raceTime } }),
   ]);
   const codes = [raceA.status, raceB.status].sort();
   check(
@@ -226,11 +227,11 @@ function weekdayOf(dateStr) {
     codes[0] === 201 && codes[1] === 409,
     `statuses ${codes.join(' / ')}`
   );
-  const raceWinnerId = (raceA.status === 201 ? raceA : raceB).json.data._id;
+  const raceWinnerId = (raceA.status === 201 ? raceA : raceB).json.data.id;
 
   const invalidDoctor = await req('POST', '/appointments', {
     token: alice.token,
-    body: { doctorId: 'not-an-objectid', date: slotDate, time: slots[2].startTime },
+    body: { doctorId: 'not-a-uuid', date: slotDate, time: slots[2].startTime },
   });
   check(
     'BV-02 invalid doctorId rejected',
@@ -240,7 +241,7 @@ function weekdayOf(dateStr) {
 
   const impossibleBooking = await req('POST', '/appointments', {
     token: alice.token,
-    body: { doctorId: target._id, date: '2026-02-30', time: slots[2].startTime },
+    body: { doctorId: target.id, date: '2026-02-30', time: slots[2].startTime },
   });
   check(
     'BV-02b impossible calendar day rejected at booking',
@@ -250,13 +251,13 @@ function weekdayOf(dateStr) {
 
   const offGrid = await req('POST', '/appointments', {
     token: alice.token,
-    body: { doctorId: target._id, date: slotDate, time: '09:07' },
+    body: { doctorId: target.id, date: slotDate, time: '09:07' },
   });
   check('BV-03 off-grid start time rejected', offGrid.status === 400, `${offGrid.status} ${offGrid.json && offGrid.json.error}`);
 
   const badTimeFormat = await req('POST', '/appointments', {
     token: alice.token,
-    body: { doctorId: target._id, date: slotDate, time: '25:00' },
+    body: { doctorId: target.id, date: slotDate, time: '25:00' },
   });
   check('BV-04 out-of-range time rejected', badTimeFormat.status === 400, `${badTimeFormat.status} ${badTimeFormat.json && badTimeFormat.json.error}`);
 
@@ -272,7 +273,7 @@ function weekdayOf(dateStr) {
   const pastBlock = blocks.find((b) => b.day === weekdayOf(pastDate));
   const pastBooking = await req('POST', '/appointments', {
     token: alice.token,
-    body: { doctorId: target._id, date: pastDate, time: pastBlock.startTime },
+    body: { doctorId: target.id, date: pastDate, time: pastBlock.startTime },
   });
   check(
     'TC-14 past slot rejected',
@@ -375,25 +376,24 @@ function weekdayOf(dateStr) {
     `${notesOnLive.status} ${notesOnLive.json && notesOnLive.json.error}`
   );
 
-  console.log('\n=== F. Cancellation cutoff and the notes window (time travel via Mongo) ===');
-
-  await mongoose.connect(config.mongoUri);
-  const Appointment = require('../../src/models/Appointment');
+  console.log('\n=== F. Cancellation cutoff and the notes window (time travel via Prisma) ===');
 
   // A consultation that finished three days ago: outside the 24h notes window.
   const staleDate = shift(-3);
-  const stale = await Appointment.create({
-    patientId: alice.user._id,
-    doctorId: target._id,
-    date: staleDate,
-    startTime: '09:00',
-    endTime: '09:30',
-    dateTime: new Date(`${staleDate}T09:00:00`),
-    status: 'Completed',
-    consultationNotes: 'Original note.',
+  const stale = await prisma.appointment.create({
+    data: {
+      patientId: alice.user.id,
+      doctorId: target.id,
+      date: staleDate,
+      startTime: '09:00',
+      endTime: '09:30',
+      dateTime: new Date(`${staleDate}T09:00:00`),
+      status: 'Completed',
+      consultationNotes: 'Original note.',
+    },
   });
 
-  const lateEdit = await req('PATCH', `/appointments/${stale._id}/notes`, {
+  const lateEdit = await req('PATCH', `/appointments/${stale.id}/notes`, {
     token: doctor.token,
     body: { notes: 'late edit attempt' },
   });
@@ -403,7 +403,7 @@ function weekdayOf(dateStr) {
     `${lateEdit.status} ${lateEdit.json && lateEdit.json.error}`
   );
 
-  const adminLateEdit = await req('PATCH', `/appointments/${stale._id}/notes`, {
+  const adminLateEdit = await req('PATCH', `/appointments/${stale.id}/notes`, {
     token: admin.token,
     body: { notes: 'corrected by records office' },
   });
@@ -417,24 +417,26 @@ function weekdayOf(dateStr) {
   const soon = new Date(Date.now() + 60 * 60 * 1000);
   const soonDate = iso(soon);
   const soonTime = `${String(soon.getHours()).padStart(2, '0')}:${String(soon.getMinutes()).padStart(2, '0')}`;
-  const imminent = await Appointment.create({
-    patientId: alice.user._id,
-    doctorId: target._id,
-    date: soonDate,
-    startTime: soonTime,
-    endTime: soonTime,
-    dateTime: soon,
-    status: 'Confirmed',
+  const imminent = await prisma.appointment.create({
+    data: {
+      patientId: alice.user.id,
+      doctorId: target.id,
+      date: soonDate,
+      startTime: soonTime,
+      endTime: soonTime,
+      dateTime: soon,
+      status: 'Confirmed',
+    },
   });
 
-  const lateCancel = await req('POST', `/appointments/${imminent._id}/cancel`, { token: alice.token });
+  const lateCancel = await req('POST', `/appointments/${imminent.id}/cancel`, { token: alice.token });
   check(
     'TC-22 patient blocked inside the 2h cancellation cutoff',
     lateCancel.status === 400 && /2 hours before start time/.test(lateCancel.json.error),
     `${lateCancel.status} ${lateCancel.json && lateCancel.json.error}`
   );
 
-  const adminLateCancel = await req('POST', `/appointments/${imminent._id}/cancel`, { token: admin.token });
+  const adminLateCancel = await req('POST', `/appointments/${imminent.id}/cancel`, { token: admin.token });
   check(
     'TC-22b admin bypasses the cancellation cutoff',
     adminLateCancel.status === 200 && adminLateCancel.json.data.status === 'Cancelled',
@@ -448,7 +450,7 @@ function weekdayOf(dateStr) {
   });
   check('TC-23 patient cancels outside the cutoff', patientCancel.status === 200, `status ${patientCancel.status}`);
 
-  const slotsReleased = await req('GET', `/doctors/${target._id}/slots?date=${slotDate}`, { token: alice.token });
+  const slotsReleased = await req('GET', `/doctors/${target.id}/slots?date=${slotDate}`, { token: alice.token });
   check(
     'TC-24 cancellation releases the slot',
     slotsReleased.json.slots.some((s) => s.startTime === raceTime),
@@ -457,11 +459,11 @@ function weekdayOf(dateStr) {
 
   const fresh = await req('POST', '/appointments', {
     token: bob.token,
-    body: { doctorId: target._id, date: slotDate, time: raceTime, symptoms: 'Follow-up' },
+    body: { doctorId: target.id, date: slotDate, time: raceTime, symptoms: 'Follow-up' },
   });
   check('TC-25 released slot is re-bookable', fresh.status === 201, `status ${fresh.status}`);
 
-  const moved = await req('POST', `/appointments/${fresh.json.data._id}/reschedule`, {
+  const moved = await req('POST', `/appointments/${fresh.json.data.id}/reschedule`, {
     token: bob.token,
     body: { date: slotDate, time: slots[2].startTime },
   });
@@ -514,15 +516,15 @@ function weekdayOf(dateStr) {
 
   console.log('\n=== H. Admin record purge (TC-32) ===');
 
-  const purge = await req('DELETE', `/appointments/${stale._id}`, { token: admin.token });
+  const purge = await req('DELETE', `/appointments/${stale.id}`, { token: admin.token });
   check('TC-32 admin purges a record', purge.status === 200 && /purged/.test(purge.json.message), `status ${purge.status}`);
 
-  const gone = await req('GET', `/appointments/${stale._id}`, { token: admin.token });
+  const gone = await req('GET', `/appointments/${stale.id}`, { token: admin.token });
   check('TC-32b purged record is unreachable', gone.status === 404, `status ${gone.status}`);
 
   console.log('\n=== I. Patient and doctor profile updates ===');
 
-  const profileUpdate = await req('PATCH', `/patients/${alice.user._id}`, {
+  const profileUpdate = await req('PATCH', `/patients/${alice.user.id}`, {
     token: alice.token,
     body: { phone: '9800000001', address: 'Lakeside, Pokhara', emergencyContact: '9800000002' },
   });
@@ -532,13 +534,13 @@ function weekdayOf(dateStr) {
     `status ${profileUpdate.status}`
   );
 
-  const foreignProfile = await req('PATCH', `/patients/${bob.user._id}`, { token: alice.token, body: { phone: '000' } });
+  const foreignProfile = await req('PATCH', `/patients/${bob.user.id}`, { token: alice.token, body: { phone: '000' } });
   check('SEC-12 patient cannot edit another profile', foreignProfile.status === 403, `status ${foreignProfile.status}`);
 
-  const foreignProfileRead = await req('GET', `/patients/${bob.user._id}`, { token: alice.token });
+  const foreignProfileRead = await req('GET', `/patients/${bob.user.id}`, { token: alice.token });
   check('SEC-17 patient cannot read another profile', foreignProfileRead.status === 403, `status ${foreignProfileRead.status}`);
 
-  const roleEscalation = await req('PATCH', `/patients/${alice.user._id}`, { token: alice.token, body: { role: 'admin' } });
+  const roleEscalation = await req('PATCH', `/patients/${alice.user.id}`, { token: alice.token, body: { role: 'admin' } });
   const stillPatient = await req('GET', '/auth/me', { token: alice.token });
   check(
     'SEC-13 role cannot be escalated through profile update',
@@ -546,20 +548,20 @@ function weekdayOf(dateStr) {
     `role after attempt: ${stillPatient.json.user.role} (PATCH ${roleEscalation.status})`
   );
 
-  const feeUpdate = await req('PATCH', `/doctors/${target._id}`, { token: doctor.token, body: { consultationFee: 950 } });
+  const feeUpdate = await req('PATCH', `/doctors/${target.id}`, { token: doctor.token, body: { consultationFee: 950 } });
   check('TC-34 doctor updates own fee', feeUpdate.status === 200 && feeUpdate.json.data.consultationFee === 950, `status ${feeUpdate.status}`);
 
-  const foreignFee = await req('PATCH', `/doctors/${target._id}`, { token: otherDoctor.token, body: { consultationFee: 1 } });
+  const foreignFee = await req('PATCH', `/doctors/${target.id}`, { token: otherDoctor.token, body: { consultationFee: 1 } });
   check('SEC-14 doctor cannot edit another doctor', foreignFee.status === 403, `status ${foreignFee.status}`);
 
-  const nameByAdmin = await req('PATCH', `/doctors/${target._id}`, { token: admin.token, body: { name: 'Dr. Anil Mehta', consultationFee: 800 } });
+  const nameByAdmin = await req('PATCH', `/doctors/${target.id}`, { token: admin.token, body: { name: 'Dr. Anil Mehta', consultationFee: 800 } });
   check(
     'TC-35 admin edits the linked user name',
     nameByAdmin.status === 200 && nameByAdmin.json.data.doctorName === 'Dr. Anil Mehta',
     `name ${nameByAdmin.json && nameByAdmin.json.data && nameByAdmin.json.data.doctorName}`
   );
 
-  const deactivate = await req('PATCH', `/doctors/${target._id}/status`, { token: admin.token, body: { isActive: false } });
+  const deactivate = await req('PATCH', `/doctors/${target.id}/status`, { token: admin.token, body: { isActive: false } });
   const dirAfter = await req('GET', '/doctors', { token: alice.token });
   check(
     'TC-36 soft delete removes the doctor from the directory',
@@ -567,7 +569,7 @@ function weekdayOf(dateStr) {
     `count ${dirAfter.json && dirAfter.json.count} (baseline ${baselineDirCount})`
   );
 
-  const reactivate = await req('PATCH', `/doctors/${target._id}/status`, { token: admin.token, body: { isActive: true } });
+  const reactivate = await req('PATCH', `/doctors/${target.id}/status`, { token: admin.token, body: { isActive: true } });
   const dirRestored = await req('GET', '/doctors', { token: alice.token });
   check(
     'TC-37 reactivation restores the listing',
@@ -575,14 +577,14 @@ function weekdayOf(dateStr) {
     `count ${dirRestored.json && dirRestored.json.count} (baseline ${baselineDirCount})`
   );
 
-  const deactivatedPatient = await req('DELETE', `/patients/${bob.user._id}`, { token: admin.token, body: { isActive: false } });
+  const deactivatedPatient = await req('DELETE', `/patients/${bob.user.id}`, { token: admin.token, body: { isActive: false } });
   const blockedLogin = await req('POST', '/auth/login', { body: { email: 'bob@example.com', password: 'Patient@123' } });
   check(
     'TC-38 deactivated account cannot log in',
     deactivatedPatient.status === 200 && blockedLogin.status === 403 && /deactivated/.test(blockedLogin.json.error),
     `${blockedLogin.status} ${blockedLogin.json && blockedLogin.json.error}`
   );
-  await req('DELETE', `/patients/${bob.user._id}`, { token: admin.token, body: { isActive: true } });
+  await req('DELETE', `/patients/${bob.user.id}`, { token: admin.token, body: { isActive: true } });
 
   // Runs after TC-36/37 so the directory baseline used there stays stable.
   const newDocEmail = `nair_${Date.now()}@hospital.com`;
@@ -611,7 +613,7 @@ function weekdayOf(dateStr) {
       created.json.data.specialization === 'Orthopedic Surgeon',
     `status ${created.status} ${created.json && created.json.data && created.json.data.doctorName} / ${created.json && created.json.data && created.json.data.specialization}`
   );
-  const newDocId = created.json.data && created.json.data._id;
+  const newDocId = created.json.data && created.json.data.id;
 
   const newDocLogin = await req('POST', '/auth/login', { body: { email: newDocEmail, password: 'Doctor@123' } });
   check(
@@ -682,18 +684,16 @@ function weekdayOf(dateStr) {
   // Teardown. The API only soft-deletes accounts, so the entities this suite
   // created are removed directly to keep the seeded baseline (and therefore
   // TC-05's absolute directory counts) valid on a re-run without reseeding.
-  const User = require('../../src/models/User');
-  const Doctor = require('../../src/models/Doctor');
-  const createdDoc = await Doctor.findById(newDocId);
+  const createdDoc = await prisma.doctor.findUnique({ where: { id: newDocId } });
   if (createdDoc) {
-    await Appointment.deleteMany({ doctorId: createdDoc._id });
-    await User.deleteOne({ _id: createdDoc.userId });
-    await Doctor.deleteOne({ _id: createdDoc._id });
+    await prisma.appointment.deleteMany({ where: { doctorId: createdDoc.id } });
+    // Deleting the account cascades to the doctor profile.
+    await prisma.user.delete({ where: { id: createdDoc.userId } });
   }
-  await User.deleteMany({ email });
-  await req('PATCH', `/doctors/${target._id}`, { token: admin.token, body: { name: 'Dr. Arjun Mehta', consultationFee: 800 } });
+  await prisma.user.deleteMany({ where: { email } });
+  await req('PATCH', `/doctors/${target.id}`, { token: admin.token, body: { name: 'Dr. Arjun Mehta', consultationFee: 800 } });
 
-  await mongoose.disconnect();
+  await disconnectDB();
 
   console.log(`\n================ RESULT: ${pass} passed, ${fail} failed ================`);
   if (fail) {
@@ -704,7 +704,7 @@ function weekdayOf(dateStr) {
 })().catch(async (err) => {
   console.error('\nHARNESS ERROR:', err);
   try {
-    await mongoose.disconnect();
+    await disconnectDB();
   } catch {}
   process.exit(2);
 });

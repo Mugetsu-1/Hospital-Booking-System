@@ -1,6 +1,4 @@
-const mongoose = require('mongoose');
-const Appointment = require('../models/Appointment');
-const Doctor = require('../models/Doctor');
+const { prisma } = require('../db');
 const config = require('../config');
 const cache = require('../utils/cache');
 const realtime = require('../services/realtime');
@@ -12,37 +10,14 @@ const {
   conflict,
   forbidden,
 } = require('../utils/errors');
-const { endForStart, isEligibleStart, isRealDate, DATE_RE } = require('../utils/slots');
-
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const { endForStart, isEligibleStart, isRealDate, DATE_RE, TIME_RE } = require('../utils/slots');
+const { isUuid } = require('../utils/ids');
+const { STATUSES, canTransition } = require('../domain/appointment');
+const { appointmentSummary } = require('../utils/serialize');
 
 const LIVE = ['Pending', 'Confirmed'];
-const POPULATE_DOCTOR = { path: 'doctorId', populate: { path: 'userId', select: 'name email phone' } };
-const POPULATE_PATIENT = { path: 'patientId', select: 'name email phone age gender emergencyContact' };
-
-/**
- * Unwrap a reference so ownership checks work whether the document was loaded
- * plainly (ObjectId) or with .populate() (a sub-document). Comparing an
- * ObjectId against a populated document always yields false, which would
- * silently lock the real owner out of their own record.
- */
-function refId(ref) {
-  return ref && ref._id ? ref._id : ref;
-}
-
-function serialize(a) {
-  const obj = a.toObject ? a.toObject() : a;
-  const doc = obj.doctorId || {};
-  const pat = obj.patientId || {};
-  return {
-    ...obj,
-    doctorName: doc.doctorName || (doc.userId && doc.userId.name) || '',
-    doctorSpecialization: doc.specialization || '',
-    doctorPhone: doc.userId ? doc.userId.phone : '',
-    patientName: pat.name || '',
-    patientPhone: pat.phone || '',
-  };
-}
+const INCLUDE_DOCTOR = { doctor: { include: { user: true } } };
+const INCLUDE_FULL = { doctor: { include: { user: true } }, patient: true };
 
 function parseDate(dateStr) {
   if (!DATE_RE.test(dateStr || '')) {
@@ -57,7 +32,7 @@ async function loadBookingContext({ doctorId, date, time }) {
   parseDate(date);
   if (!TIME_RE.test(time || '')) throw badRequest('time must be in HH:MM (24-hour) format');
 
-  const doctor = await Doctor.findOne({ _id: doctorId, isActive: true });
+  const doctor = await prisma.doctor.findFirst({ where: { id: doctorId, isActive: true } });
   if (!doctor) throw notFound('Doctor not found');
   if (!doctor.isAvailable) throw badRequest('This doctor is currently on leave / not available');
 
@@ -70,19 +45,25 @@ async function loadBookingContext({ doctorId, date, time }) {
 }
 
 async function assertSlotFree({ doctorId, date, startTime, excludeId = null }) {
-  const q = {
+  const where = {
     doctorId,
     date,
     startTime,
-    status: { $in: LIVE },
+    status: { in: LIVE },
   };
-  if (excludeId) q._id = { $ne: excludeId };
-  const clash = await Appointment.findOne(q);
+  if (excludeId) where.id = { not: excludeId };
+  const clash = await prisma.appointment.findFirst({ where });
   if (clash) throw conflict('This slot has already been booked');
 }
 
 function cutoffCutoffMs() {
   return config.policies.cancelCutoffHours * 60 * 60 * 1000;
+}
+
+/** Load the doctor profile linked to a doctor-role session (or null). */
+async function findDoctorProfile(actor) {
+  if (!actor || actor.role !== 'doctor') return null;
+  return prisma.doctor.findFirst({ where: { userId: actor.id } });
 }
 
 /**
@@ -92,7 +73,7 @@ function cutoffCutoffMs() {
 const createAppointment = asyncHandler(async (req, res) => {
   const { doctorId, date, time, symptoms = '' } = req.body;
   if (!doctorId) throw badRequest('doctorId is required');
-  if (mongoose.Types.ObjectId.isValid(doctorId) === false) throw badRequest('Invalid doctorId');
+  if (!isUuid(doctorId)) throw badRequest('Invalid doctorId');
 
   const { doctor, endTime } = await loadBookingContext({ doctorId, date, time });
 
@@ -104,32 +85,32 @@ const createAppointment = asyncHandler(async (req, res) => {
 
   await assertSlotFree({ doctorId, date, startTime: time });
 
-  const appointment = await Appointment.create({
-    patientId: req.user._id,
-    doctorId: doctor._id,
-    date,
-    startTime: time,
-    endTime,
-    dateTime: slotDate,
-    status: 'Pending',
-    symptoms: String(symptoms).trim(),
+  // A simultaneous booking of the same slot is rejected by the partial
+  // unique index (P2002 -> 409 in the central error handler).
+  const created = await prisma.appointment.create({
+    data: {
+      patientId: req.user.id,
+      doctorId: doctor.id,
+      date,
+      startTime: time,
+      endTime,
+      dateTime: slotDate,
+      status: 'Pending',
+      symptoms: String(symptoms).trim(),
+    },
   });
 
-  const full = await Appointment.findById(appointment._id).populate(POPULATE_DOCTOR);
-  const serialized = serialize(full);
+  const full = await prisma.appointment.findUnique({
+    where: { id: created.id },
+    include: INCLUDE_DOCTOR,
+  });
+  const serialized = appointmentSummary(full);
 
   // A new booking consumes a slot: drop the cached slot grid for this doctor
   // and push a lightweight "something changed" trigger over the socket layer.
-  await cache.delPrefix(`slots:${doctor._id}`);
-  realtime.slotsChanged(doctor._id);
-  realtime.emitAppointment('appointment:created', {
-    _id: appointment._id,
-    patientId: req.user._id,
-    doctorId: doctor._id,
-    status: 'Pending',
-    date,
-    startTime: time,
-  });
+  await cache.delPrefix(`slots:${doctor.id}`);
+  realtime.slotsChanged(doctor.id);
+  realtime.emitAppointment('appointment:created', full);
 
   // Booking confirmation e-mail (no-op unless SMTP is configured).
   mailer.sendBookingCreated({
@@ -150,16 +131,21 @@ const createAppointment = asyncHandler(async (req, res) => {
  */
 const listMine = asyncHandler(async (req, res) => {
   const { status = '', from = '', to = '' } = req.query;
-  const q = { patientId: req.user._id };
-  if (status) q.status = status;
-  if (isRealDate(from)) q.dateTime = { $gte: new Date(`${from}T00:00:00`) };
-  if (isRealDate(to)) q.dateTime = { ...(q.dateTime || {}), $lte: new Date(`${to}T23:59:59`) };
+  const where = { patientId: req.user.id };
+  if (status) where.status = STATUSES.includes(status) ? status : { in: [] };
+  if (isRealDate(from) || isRealDate(to)) {
+    where.dateTime = {};
+    if (isRealDate(from)) where.dateTime.gte = new Date(`${from}T00:00:00`);
+    if (isRealDate(to)) where.dateTime.lte = new Date(`${to}T23:59:59`);
+  }
 
-  const rows = await Appointment.find(q)
-    .populate(POPULATE_DOCTOR)
-    .sort({ dateTime: 1 });
+  const rows = await prisma.appointment.findMany({
+    where,
+    include: INCLUDE_DOCTOR,
+    orderBy: { dateTime: 'asc' },
+  });
 
-  res.json({ count: rows.length, data: rows.map(serialize) });
+  res.json({ count: rows.length, data: rows.map(appointmentSummary) });
 });
 
 /**
@@ -168,28 +154,30 @@ const listMine = asyncHandler(async (req, res) => {
  * inclusive range, which backs the weekly and monthly dashboard views.
  */
 const listForDoctor = asyncHandler(async (req, res) => {
-  const doctorProfile = await Doctor.findOne({ userId: req.user._id });
+  const doctorProfile = await prisma.doctor.findFirst({ where: { userId: req.user.id } });
   if (!doctorProfile) throw forbidden('No doctor profile linked to this account');
 
   const { date = '', status = '', from = '', to = '' } = req.query;
-  const q = { doctorId: doctorProfile._id };
-  if (status) q.status = status;
+  const where = { doctorId: doctorProfile.id };
+  if (status) where.status = STATUSES.includes(status) ? status : { in: [] };
 
   // `date` is stored as "YYYY-MM-DD", so a lexicographic range is also a
   // chronological one and stays on the doctorId+date index.
   if (isRealDate(date)) {
-    q.date = date;
+    where.date = date;
   } else if (isRealDate(from) || isRealDate(to)) {
-    q.date = {};
-    if (isRealDate(from)) q.date.$gte = from;
-    if (isRealDate(to)) q.date.$lte = to;
+    where.date = {};
+    if (isRealDate(from)) where.date.gte = from;
+    if (isRealDate(to)) where.date.lte = to;
   }
 
-  const rows = await Appointment.find(q)
-    .populate(POPULATE_PATIENT)
-    .sort({ date: 1, startTime: 1 });
+  const rows = await prisma.appointment.findMany({
+    where,
+    include: { patient: true },
+    orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+  });
 
-  res.json({ count: rows.length, data: rows.map(serialize) });
+  res.json({ count: rows.length, data: rows.map(appointmentSummary) });
 });
 
 /**
@@ -198,36 +186,40 @@ const listForDoctor = asyncHandler(async (req, res) => {
  */
 const listAll = asyncHandler(async (req, res) => {
   const { status = '', doctorId = '', patientId = '', from = '', to = '' } = req.query;
-  const q = {};
-  if (status) q.status = status;
-  if (mongoose.Types.ObjectId.isValid(doctorId)) q.doctorId = doctorId;
-  if (mongoose.Types.ObjectId.isValid(patientId)) q.patientId = patientId;
-  if (isRealDate(from)) q.dateTime = { $gte: new Date(`${from}T00:00:00`) };
-  if (isRealDate(to)) q.dateTime = { ...(q.dateTime || {}), $lte: new Date(`${to}T23:59:59`) };
+  const where = {};
+  if (status) where.status = STATUSES.includes(status) ? status : { in: [] };
+  if (isUuid(doctorId)) where.doctorId = doctorId;
+  if (isUuid(patientId)) where.patientId = patientId;
+  if (isRealDate(from) || isRealDate(to)) {
+    where.dateTime = {};
+    if (isRealDate(from)) where.dateTime.gte = new Date(`${from}T00:00:00`);
+    if (isRealDate(to)) where.dateTime.lte = new Date(`${to}T23:59:59`);
+  }
 
-  const rows = await Appointment.find(q)
-    .populate(POPULATE_DOCTOR)
-    .populate(POPULATE_PATIENT)
-    .sort({ dateTime: -1 });
+  const rows = await prisma.appointment.findMany({
+    where,
+    include: INCLUDE_FULL,
+    orderBy: { dateTime: 'desc' },
+  });
 
-  res.json({ count: rows.length, data: rows.map(serialize) });
+  res.json({ count: rows.length, data: rows.map(appointmentSummary) });
 });
 
 /** GET /api/appointments/:id — visibility scoped to owner/doctor/admin. */
 const getOne = asyncHandler(async (req, res) => {
-  const a = await Appointment.findById(req.params.id)
-    .populate(POPULATE_DOCTOR)
-    .populate(POPULATE_PATIENT);
+  const a = await prisma.appointment.findUnique({
+    where: { id: req.params.id },
+    include: INCLUDE_FULL,
+  });
   if (!a) throw notFound('Appointment not found');
 
-  const doctorProfile = await Doctor.findOne({ userId: req.user._id });
-  const isOwner = req.user.role === 'patient' && req.user._id.equals(refId(a.patientId));
-  const isTheirDoctor =
-    req.user.role === 'doctor' && doctorProfile && doctorProfile._id.equals(refId(a.doctorId));
+  const isOwner = req.user.role === 'patient' && req.user.id === a.patientId;
+  const doctorProfile = req.user.role === 'doctor' ? await findDoctorProfile(req.user) : null;
+  const isTheirDoctor = Boolean(doctorProfile && doctorProfile.id === a.doctorId);
   const isAdmin = req.user.role === 'admin';
   if (!isOwner && !isTheirDoctor && !isAdmin) throw forbidden('You cannot view this appointment');
 
-  res.json({ data: serialize(a) });
+  res.json({ data: appointmentSummary(a) });
 });
 
 /** Shared guard for reschedule/cancel. */
@@ -239,7 +231,7 @@ async function canMutate(a, actor, { adminBypass = false, allowDoctor = false } 
   if (adminBypass || actor.role === 'admin') return;
 
   if (actor.role === 'patient') {
-    if (!actor._id.equals(refId(a.patientId))) {
+    if (actor.id !== a.patientId) {
       throw forbidden('You can only change your own appointments');
     }
     // Patients cannot cancel/reschedule inside the cutoff window.
@@ -255,8 +247,8 @@ async function canMutate(a, actor, { adminBypass = false, allowDoctor = false } 
   // A doctor may only act on appointments assigned to them, and only where the
   // operation is meaningful for their role (cancelling, not rescheduling).
   if (actor.role === 'doctor' && allowDoctor) {
-    const doctorProfile = await Doctor.findOne({ userId: actor._id });
-    if (!doctorProfile || !doctorProfile._id.equals(refId(a.doctorId))) {
+    const doctorProfile = await findDoctorProfile(actor);
+    if (!doctorProfile || doctorProfile.id !== a.doctorId) {
       throw forbidden('You can only change appointments assigned to you');
     }
     return;
@@ -269,38 +261,39 @@ async function canMutate(a, actor, { adminBypass = false, allowDoctor = false } 
  * POST /api/appointments/:id/reschedule  (patient own / admin)
  */
 const reschedule = asyncHandler(async (req, res) => {
-  const a = await Appointment.findById(req.params.id);
+  const a = await prisma.appointment.findUnique({ where: { id: req.params.id } });
   if (!a) throw notFound('Appointment not found');
 
   const admin = req.user.role === 'admin';
   await canMutate(a, req.user, { adminBypass: admin });
 
   const { date, time } = req.body;
-  const { doctor, endTime } = await loadBookingContext({ doctorId: String(a.doctorId), date, time });
+  const { endTime } = await loadBookingContext({ doctorId: a.doctorId, date, time });
 
   const slotDate = new Date(`${date}T${time}:00`);
   if (slotDate.getTime() <= Date.now()) throw badRequest('Cannot reschedule to a past slot');
 
   // Prevent the free/busy race for the *new* slot (the old slot is excluded).
-  await assertSlotFree({ doctorId: a.doctorId, date, startTime: time, excludeId: a._id });
+  await assertSlotFree({ doctorId: a.doctorId, date, startTime: time, excludeId: a.id });
 
-  a.date = date;
-  a.startTime = time;
-  a.endTime = endTime;
-  a.dateTime = slotDate;
-  a.status = 'Pending';
-  await a.save();
+  const updated = await prisma.appointment.update({
+    where: { id: a.id },
+    data: { date, startTime: time, endTime, dateTime: slotDate, status: 'Pending' },
+  });
 
-  const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
-  const serialized = serialize(full);
+  const full = await prisma.appointment.findUnique({
+    where: { id: updated.id },
+    include: INCLUDE_FULL,
+  });
+  const serialized = appointmentSummary(full);
 
   // The old slot is released and the new one consumed.
   await cache.delPrefix(`slots:${a.doctorId}`);
   realtime.slotsChanged(a.doctorId);
-  realtime.emitAppointment('appointment:updated', a);
+  realtime.emitAppointment('appointment:updated', full);
   mailer.sendRescheduled({
     patientName: serialized.patientName,
-    patientEmail: full.patientId ? full.patientId.email : '',
+    patientEmail: full.patient ? full.patient.email : '',
     doctorName: serialized.doctorName,
     date,
     time,
@@ -313,26 +306,30 @@ const reschedule = asyncHandler(async (req, res) => {
  * POST /api/appointments/:id/cancel  (patient own / assigned doctor / admin)
  */
 const cancelAppointment = asyncHandler(async (req, res) => {
-  const a = await Appointment.findById(req.params.id);
+  const a = await prisma.appointment.findUnique({ where: { id: req.params.id } });
   if (!a) throw notFound('Appointment not found');
 
   const admin = req.user.role === 'admin';
   await canMutate(a, req.user, { adminBypass: admin, allowDoctor: true });
 
-  a.status = 'Cancelled';
-  a.cancelledBy = req.user.role;
-  await a.save();
+  await prisma.appointment.update({
+    where: { id: a.id },
+    data: { status: 'Cancelled', cancelledBy: req.user.role },
+  });
 
-  const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
-  const serialized = serialize(full);
+  const full = await prisma.appointment.findUnique({
+    where: { id: a.id },
+    include: INCLUDE_FULL,
+  });
+  const serialized = appointmentSummary(full);
 
   // Cancelling returns the slot to the available pool.
   await cache.delPrefix(`slots:${a.doctorId}`);
   realtime.slotsChanged(a.doctorId);
-  realtime.emitAppointment('appointment:updated', a);
+  realtime.emitAppointment('appointment:updated', full);
   mailer.sendCancelled({
     patientName: serialized.patientName,
-    patientEmail: full.patientId ? full.patientId.email : '',
+    patientEmail: full.patient ? full.patient.email : '',
     doctorName: serialized.doctorName,
     date: a.date,
     time: a.startTime,
@@ -343,7 +340,7 @@ const cancelAppointment = asyncHandler(async (req, res) => {
 
 /**
  * Consultation record fields (Module 4), mapped from request body keys to
- * document paths. `notes` stays the public name for backwards compatibility.
+ * database fields. `notes` stays the public name for backwards compatibility.
  */
 const RECORD_FIELDS = {
   notes: 'consultationNotes',
@@ -373,44 +370,46 @@ function consultationPatch(body = {}) {
  * Enforces the legal transition graph (TC-04: Cancelled -> Completed is a 400).
  */
 const updateStatus = asyncHandler(async (req, res) => {
-  const a = await Appointment.findById(req.params.id);
+  const a = await prisma.appointment.findUnique({ where: { id: req.params.id } });
   if (!a) throw notFound('Appointment not found');
 
-  const doctorProfile = await Doctor.findOne({ userId: req.user._id });
-  const isTheirDoctor =
-    req.user.role === 'doctor' && doctorProfile && doctorProfile._id.equals(refId(a.doctorId));
+  const doctorProfile = await findDoctorProfile(req.user);
+  const isTheirDoctor = Boolean(doctorProfile && doctorProfile.id === a.doctorId);
   const isAdmin = req.user.role === 'admin';
   if (!isTheirDoctor && !isAdmin) throw forbidden('Only the assigned doctor or an admin can update status');
 
   const { status } = req.body;
-  if (!Appointment.canTransition(a.status, status)) {
+  if (!canTransition(a.status, status)) {
     throw badRequest(`Invalid status transition: ${a.status} -> ${status || '(none)'}`);
   }
 
-  a.status = status;
+  const data = { status };
   if (status === 'Completed') {
     const patch = consultationPatch(req.body);
     if (patch) {
-      Object.assign(a, patch);
-      a.notesLastEditedAt = new Date();
+      Object.assign(data, patch);
+      data.notesLastEditedAt = new Date();
     }
   }
-  await a.save();
+  await prisma.appointment.update({ where: { id: a.id }, data });
 
-  const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
-  const serialized = serialize(full);
+  const full = await prisma.appointment.findUnique({
+    where: { id: a.id },
+    include: INCLUDE_FULL,
+  });
+  const serialized = appointmentSummary(full);
 
   // Status transitions can consume/release slots (Confirmed <-> Cancelled).
   await cache.delPrefix(`slots:${a.doctorId}`);
   realtime.slotsChanged(a.doctorId);
-  realtime.emitAppointment('appointment:status', a);
+  realtime.emitAppointment('appointment:status', full);
   mailer.sendStatusChanged({
     patientName: serialized.patientName,
-    patientEmail: full.patientId ? full.patientId.email : '',
+    patientEmail: full.patient ? full.patient.email : '',
     doctorName: serialized.doctorName,
     date: a.date,
     time: a.startTime,
-    status: a.status,
+    status: serialized.status,
   });
 
   res.json({ data: serialized });
@@ -423,12 +422,11 @@ const updateStatus = asyncHandler(async (req, res) => {
  * after the consultation ends.
  */
 const saveNotes = asyncHandler(async (req, res) => {
-  const a = await Appointment.findById(req.params.id);
+  const a = await prisma.appointment.findUnique({ where: { id: req.params.id } });
   if (!a) throw notFound('Appointment not found');
 
-  const doctorProfile = await Doctor.findOne({ userId: req.user._id });
-  const isTheirDoctor =
-    req.user.role === 'doctor' && doctorProfile && doctorProfile._id.equals(refId(a.doctorId));
+  const doctorProfile = await findDoctorProfile(req.user);
+  const isTheirDoctor = Boolean(doctorProfile && doctorProfile.id === a.doctorId);
   const isAdmin = req.user.role === 'admin';
   if (!isTheirDoctor && !isAdmin) throw forbidden('Only the assigned doctor or an admin can write notes');
 
@@ -447,22 +445,33 @@ const saveNotes = asyncHandler(async (req, res) => {
     );
   }
 
-  Object.assign(a, patch);
-  if (!a.consultationNotes && !a.diagnosis && !a.prescription) {
+  const merged = {
+    consultationNotes: a.consultationNotes,
+    diagnosis: a.diagnosis,
+    prescription: a.prescription,
+    ...patch,
+  };
+  if (!merged.consultationNotes && !merged.diagnosis && !merged.prescription) {
     throw badRequest('The consultation record cannot be left completely empty');
   }
-  a.notesLastEditedAt = new Date();
-  await a.save();
 
-  const full = await Appointment.findById(a._id).populate(POPULATE_DOCTOR).populate(POPULATE_PATIENT);
-  const serialized = serialize(full);
+  await prisma.appointment.update({
+    where: { id: a.id },
+    data: { ...patch, notesLastEditedAt: new Date() },
+  });
+
+  const full = await prisma.appointment.findUnique({
+    where: { id: a.id },
+    include: INCLUDE_FULL,
+  });
+  const serialized = appointmentSummary(full);
 
   // Consultation records don't touch slot availability, but the patient and
   // the admin view should refresh (realtime trigger only, no cache flush).
-  realtime.emitAppointment('appointment:notes', a);
+  realtime.emitAppointment('appointment:notes', full);
   mailer.sendNotesReady({
     patientName: serialized.patientName,
-    patientEmail: full.patientId ? full.patientId.email : '',
+    patientEmail: full.patient ? full.patient.email : '',
     doctorName: serialized.doctorName,
     date: a.date,
   });
@@ -473,17 +482,18 @@ const saveNotes = asyncHandler(async (req, res) => {
 /**
  * DELETE /api/appointments/:id  (admin only)
  * Module 4 "Delete": purge an inaccurate or duplicate medical record. The
- * document is removed permanently, so a live (Pending/Confirmed) booking also
+ * row is removed permanently, so a live (Pending/Confirmed) booking also
  * releases its reserved slot back into the available pool.
  */
 const purgeAppointment = asyncHandler(async (req, res) => {
-  const a = await Appointment.findById(req.params.id)
-    .populate(POPULATE_DOCTOR)
-    .populate(POPULATE_PATIENT);
+  const a = await prisma.appointment.findUnique({
+    where: { id: req.params.id },
+    include: INCLUDE_FULL,
+  });
   if (!a) throw notFound('Appointment not found');
 
-  const snapshot = serialize(a);
-  await Appointment.deleteOne({ _id: a._id });
+  const snapshot = appointmentSummary(a);
+  await prisma.appointment.delete({ where: { id: a.id } });
 
   // Purging a live record releases its slot back into the pool.
   await cache.delPrefix(`slots:${a.doctorId}`);

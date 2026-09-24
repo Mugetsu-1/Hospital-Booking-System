@@ -1,7 +1,7 @@
 const http = require('http');
 const app = require('./app');
 const config = require('./config');
-const { connectDB } = require('./config/db');
+const { connectDB } = require('./db');
 const { connect: connectCache } = require('./utils/cache');
 const realtime = require('./services/realtime');
 

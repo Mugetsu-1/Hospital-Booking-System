@@ -1,5 +1,5 @@
 /**
- * Pure time-slot helpers (kept free of Mongo so they can be unit tested).
+ * Pure time-slot helpers (kept free of database imports so they can be unit tested).
  * All wall-clock times are "HH:MM" 24-hour strings.
  */
 
@@ -14,6 +14,45 @@ const WEEKDAY_ORDER = [
 ];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Weekday names a recurring working block may be attached to. */
+const SLOT_DAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+/** "HH:MM" 24-hour wall clock. */
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Validate the shape of a doctor's `availableSlots` value (an array of
+ * recurring working blocks). Returns an error message or null when valid —
+ * Prisma stores the value as JSON, so the application owns this check.
+ */
+function validateSlotBlocks(blocks) {
+  if (!Array.isArray(blocks)) return 'availableSlots must be an array';
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) {
+      return 'Each availableSlots entry must be an object';
+    }
+    const { day, startTime, endTime, slotDurationMins } = block;
+    if (!SLOT_DAYS.includes(day)) return `availableSlots[].day must be one of: ${SLOT_DAYS.join(', ')}`;
+    if (!TIME_RE.test(startTime || '')) return 'availableSlots[].startTime must be HH:MM (24-hour)';
+    if (!TIME_RE.test(endTime || '')) return 'availableSlots[].endTime must be HH:MM (24-hour)';
+    if (!Number.isInteger(slotDurationMins) || slotDurationMins < 5 || slotDurationMins > 240) {
+      return 'availableSlots[].slotDurationMins must be an integer between 5 and 240';
+    }
+    if (toMinutes(endTime) <= toMinutes(startTime)) {
+      return 'availableSlots[].endTime must be after startTime';
+    }
+  }
+  return null;
+}
 
 /**
  * True only for a "YYYY-MM-DD" string that names a day that actually exists.
@@ -116,7 +155,10 @@ function endForStart(doctor, dateStr, startTime) {
 module.exports = {
   WEEKDAY_ORDER,
   DATE_RE,
+  SLOT_DAYS,
+  TIME_RE,
   isRealDate,
+  validateSlotBlocks,
   toMinutes,
   toHM,
   weekdayOf,

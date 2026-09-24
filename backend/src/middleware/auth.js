@@ -1,18 +1,18 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { prisma } = require('../db');
 const config = require('../config');
-const { unauthorized, forbidden } = require('../utils/errors');
-const { asyncHandler } = require('../utils/errors');
+const { unauthorized, forbidden, asyncHandler } = require('../utils/errors');
+const { publicUser } = require('../utils/serialize');
 
 function signToken(user) {
-  return jwt.sign({ id: user._id, role: user.role }, config.jwtSecret, {
+  return jwt.sign({ id: user.id, role: user.role }, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn,
   });
 }
 
 /** Returns user + token payload used by login responses. */
 function buildAuthPayload(user) {
-  return { token: signToken(user), user };
+  return { token: signToken(user), user: publicUser(user) };
 }
 
 /**
@@ -31,14 +31,14 @@ const requireAuth = asyncHandler(async (req, _res, next) => {
     throw unauthorized('Invalid or expired token');
   }
 
-  const user = await User.findById(payload.id);
+  const user = await prisma.user.findUnique({ where: { id: String(payload.id) } });
   if (!user) throw unauthorized('Account no longer exists');
 
   if (user.isActive === false) {
     throw forbidden('Account has been deactivated. Contact an administrator.');
   }
 
-  req.user = user;
+  req.user = publicUser(user);
   next();
 });
 

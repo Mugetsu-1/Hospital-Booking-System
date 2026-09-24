@@ -15,10 +15,6 @@ const config = require('../config');
 
 let io = null;
 
-function refId(ref) {
-  return ref && ref._id ? ref._id : ref;
-}
-
 function init(httpServer) {
   if (!httpServer || io) return io;
   try {
@@ -77,14 +73,13 @@ function init(httpServer) {
  * trigger. Payload is intentionally minimal — clients refetch via REST.
  */
 function emitAppointment(event, appointment) {
-  if (!io || !appointment || !appointment._id) return;
+  if (!io || !appointment || !appointment.id) return;
   try {
-    const patientId = refId(appointment.patientId);
-    const doctorId = refId(appointment.doctorId);
+    const patientId = appointment.patientId;
     const payload = {
       event,
       appointment: {
-        id: String(appointment._id),
+        id: String(appointment.id),
         status: appointment.status,
         date: appointment.date,
         startTime: appointment.startTime,
@@ -102,7 +97,7 @@ function emitAppointment(event, appointment) {
 function slotsChanged(doctorId) {
   if (!io || !doctorId) return;
   try {
-    io.emit('slots:changed', { doctorId: String(refId(doctorId)) });
+    io.emit('slots:changed', { doctorId: String(doctorId) });
   } catch (err) {
     console.error(`[realtime] emit slots:changed failed: ${err.message}`);
   }

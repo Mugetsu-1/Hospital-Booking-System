@@ -1,8 +1,5 @@
 const bcrypt = require('bcryptjs');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Doctor = require('../models/Doctor');
-const Appointment = require('../models/Appointment');
+const { prisma } = require('../db');
 const cache = require('../utils/cache');
 const realtime = require('../services/realtime');
 const {
@@ -12,7 +9,12 @@ const {
   conflict,
   forbidden,
 } = require('../utils/errors');
-const { availableSlots, isRealDate } = require('../utils/slots');
+const { availableSlots, isRealDate, validateSlotBlocks } = require('../utils/slots');
+const { doctorSummary } = require('../utils/serialize');
+
+const LIVE = ['Pending', 'Confirmed'];
+const USER_FIELDS = { name: true, phone: true, email: true };
+const INCLUDE_USER = { user: { select: USER_FIELDS } };
 
 /** Stable, order-independent cache key fragment for a query-string object. */
 function qsKey(params = {}) {
@@ -21,23 +23,6 @@ function qsKey(params = {}) {
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, v]) => `${k}=${v}`)
     .join('&');
-}
-
-function doctorSummary(doc) {
-  const user = doc.userId || {};
-  return {
-    _id: doc._id,
-    doctorName: typeof user === 'object' && user.name ? user.name : '',
-    phone: typeof user === 'object' ? user.phone || '' : '',
-    email: typeof user === 'object' ? user.email || '' : '',
-    specialization: doc.specialization,
-    qualification: doc.qualification,
-    consultationFee: doc.consultationFee,
-    availableSlots: doc.availableSlots,
-    isAvailable: doc.isAvailable,
-    isActive: doc.isActive,
-    createdAt: doc.createdAt,
-  };
 }
 
 /**
@@ -50,49 +35,56 @@ const listDoctors = asyncHandler(async (req, res) => {
   const isAdmin = req.user && req.user.role === 'admin';
 
   const userFilter = { role: 'doctor' };
-  if (q.trim()) userFilter.name = new RegExp(q.trim(), 'i');
+  if (q.trim()) userFilter.name = { contains: q.trim(), mode: 'insensitive' };
   if (!isAdmin || includeInactive !== 'true') userFilter.isActive = true;
 
-  const users = await User.find(userFilter).select('_id name phone email isActive');
-  if (users.length === 0) return res.json({ count: 0, data: [] });
-
-  const doctorFilter = {
-    userId: { $in: users.map((u) => u._id) },
-  };
-  if (specialization.trim()) doctorFilter.specialization = new RegExp(specialization.trim(), 'i');
+  const where = { user: userFilter };
+  if (specialization.trim()) {
+    where.specialization = { contains: specialization.trim(), mode: 'insensitive' };
+  }
   if (maxFee !== '' && !Number.isNaN(Number(maxFee))) {
-    doctorFilter.consultationFee = { $lte: Number(maxFee) };
+    where.consultationFee = { lte: Number(maxFee) };
   }
-  if (day.trim()) doctorFilter.availableSlots = { $elemMatch: { day } };
   if (!isAdmin || includeInactive !== 'true') {
-    doctorFilter.isActive = true;
-    doctorFilter.isAvailable = true;
+    where.isActive = true;
+    where.isAvailable = true;
   }
 
-  const doctors = await Doctor.find(doctorFilter).populate('userId', 'name phone email');
+  let doctors = await prisma.doctor.findMany({
+    where,
+    include: INCLUDE_USER,
+    orderBy: { createdAt: 'asc' },
+  });
 
-  // Keep only doctors whose linked user passed the user-level filter.
-  const activeUserIds = new Set(users.map((u) => String(u._id)));
-  const result = doctors.filter((d) => activeUserIds.has(String(d.userId._id)));
+  // The weekly schedule lives in a JSON column; matching a weekday is a
+  // small in-memory filter (the directory is a bounded, cached list).
+  if (day.trim()) {
+    doctors = doctors.filter(
+      (d) => Array.isArray(d.availableSlots) && d.availableSlots.some((b) => b && b.day === day)
+    );
+  }
 
-  const payload = { count: result.length, data: result.map(doctorSummary) };
+  const payload = { count: doctors.length, data: doctors.map(doctorSummary) };
   await cache.setJSON(`doctors:list:${qsKey(req.query)}`, payload);
   res.json(payload);
 });
 
 /** GET /api/doctors/me — the doctor profile linked to the authenticated account. */
 const getMyProfile = asyncHandler(async (req, res) => {
-  const doctor = await Doctor.findOne({ userId: req.user._id }).populate(
-    'userId',
-    'name email phone'
-  );
+  const doctor = await prisma.doctor.findFirst({
+    where: { userId: req.user.id },
+    include: { user: { select: { name: true, email: true, phone: true } } },
+  });
   if (!doctor) throw notFound('No doctor profile is linked to this account');
   res.json({ data: doctorSummary(doctor) });
 });
 
 /** GET /api/doctors/:id — full public profile of one doctor. */
 const getDoctor = asyncHandler(async (req, res) => {
-  const doctor = await Doctor.findOne({ _id: req.params.id }).populate('userId', 'name email phone');
+  const doctor = await prisma.doctor.findUnique({
+    where: { id: req.params.id },
+    include: { user: { select: { name: true, email: true, phone: true } } },
+  });
   if (!doctor) throw notFound('Doctor not found');
   res.json({ data: doctorSummary(doctor) });
 });
@@ -112,18 +104,20 @@ const getSlots = asyncHandler(async (req, res) => {
   const cached = await cache.getJSON(slotKey);
   if (cached) return res.json(cached);
 
-  const doctor = await Doctor.findOne({ _id: req.params.id, isActive: true });
+  const doctor = await prisma.doctor.findFirst({
+    where: { id: req.params.id, isActive: true },
+  });
   if (!doctor) throw notFound('Doctor not found');
 
   let payload;
   if (!doctor.isAvailable) {
     payload = { date, slots: [], bookedTimes: [], onLeave: true };
   } else {
-    const booked = await Appointment.find({
-      doctorId: doctor._id,
-      date,
-      status: { $in: ['Pending', 'Confirmed'] },
-    }).select('startTime');
+    const booked = await prisma.appointment.findMany({
+      where: { doctorId: doctor.id, date, status: { in: LIVE } },
+      select: { startTime: true },
+      orderBy: { startTime: 'asc' },
+    });
 
     const bookedTimes = booked.map((a) => a.startTime);
     const slots = availableSlots({ doctor, dateStr: date, bookedTimes });
@@ -147,7 +141,7 @@ const createDoctor = asyncHandler(async (req, res) => {
     specialization,
     qualification = '',
     consultationFee,
-    availableSlots = [],
+    availableSlots: slotsInput = [],
     isAvailable = true,
   } = req.body;
 
@@ -156,44 +150,48 @@ const createDoctor = asyncHandler(async (req, res) => {
   if (!specialization || consultationFee === undefined || Number.isNaN(Number(consultationFee))) {
     throw badRequest('specialization and a numeric consultationFee are required');
   }
-  if (!Array.isArray(availableSlots) || availableSlots.length === 0) {
+  if (!Array.isArray(slotsInput) || slotsInput.length === 0) {
     throw badRequest('At least one availableSlots entry (day/startTime/endTime/slotDurationMins) is required');
   }
+  const slotError = validateSlotBlocks(slotsInput);
+  if (slotError) throw badRequest(slotError);
 
-  const existing = await User.findOne({ email: String(email).toLowerCase() });
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (existing) throw conflict('An account with this email already exists');
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await User.create({
-    name: String(name).trim(),
-    email,
-    passwordHash,
-    role: 'doctor',
-    phone,
-  });
 
+  let doctor;
   try {
-    const doctor = await Doctor.create({
-      userId: user._id,
-      specialization,
-      qualification,
-      consultationFee: Number(consultationFee),
-      availableSlots,
-      isAvailable,
+    // A single transaction: the auth account and the directory profile are
+    // created together or not at all (no orphaned users).
+    doctor = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: { name: String(name).trim(), email: normalizedEmail, passwordHash, role: 'doctor', phone },
+      });
+      return tx.doctor.create({
+        data: {
+          userId: user.id,
+          specialization,
+          qualification,
+          consultationFee: Number(consultationFee),
+          availableSlots: slotsInput,
+          isAvailable,
+        },
+        include: INCLUDE_USER,
+      });
     });
-    // Populate the linked account so the response carries the same shape as
-    // every other doctor endpoint (name/email/phone), not an empty summary.
-    await doctor.populate('userId', 'name email phone');
-    // A new doctor appears in directory searches and slot lookups.
-    await cache.delPrefix('doctors:list:');
-    await cache.delPrefix('slots:');
-    realtime.slotsChanged(doctor._id);
-    res.status(201).json({ data: doctorSummary(doctor) });
   } catch (err) {
-    // Roll back the auth user if the directory profile failed to save.
-    await User.deleteOne({ _id: user._id });
+    if (err.code === 'P2002') throw conflict('An account with this email already exists');
     throw err;
   }
+
+  // A new doctor appears in directory searches and slot lookups.
+  await cache.delPrefix('doctors:list:');
+  await cache.delPrefix('slots:');
+  realtime.slotsChanged(doctor.id);
+  res.status(201).json({ data: doctorSummary(doctor) });
 });
 
 /**
@@ -202,11 +200,10 @@ const createDoctor = asyncHandler(async (req, res) => {
  * update anything. Users cannot switch accounts via this route.
  */
 const updateDoctor = asyncHandler(async (req, res) => {
-  const doctor = await Doctor.findOne({ _id: req.params.id }).populate('userId', 'name email phone');
+  const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id } });
   if (!doctor) throw notFound('Doctor not found');
 
-  const isSelf =
-    req.user.role === 'doctor' && doctor.userId && req.user._id.equals(doctor.userId._id);
+  const isSelf = req.user.role === 'doctor' && req.user.id === doctor.userId;
   const isAdmin = req.user.role === 'admin';
   if (!isSelf && !isAdmin) throw forbidden('You cannot edit this doctor profile');
 
@@ -217,14 +214,15 @@ const updateDoctor = asyncHandler(async (req, res) => {
     'availableSlots',
     'isAvailable',
   ];
+  const data = {};
   for (const key of allowed) {
-    if (key in req.body) {
-      if (key === 'availableSlots' && !Array.isArray(req.body[key])) {
-        throw badRequest('availableSlots must be an array');
-      }
-      doctor[key] = req.body[key];
-    }
+    if (key in req.body) data[key] = req.body[key];
   }
+  if ('availableSlots' in data) {
+    const slotError = validateSlotBlocks(data.availableSlots);
+    if (slotError) throw badRequest(slotError);
+  }
+  if ('consultationFee' in data) data.consultationFee = Number(data.consultationFee);
 
   // Keep the linked auth account in sync. A doctor may correct their own
   // contact number; an administrator may also fix the display name.
@@ -235,17 +233,22 @@ const updateDoctor = asyncHandler(async (req, res) => {
     if (!nextName) throw badRequest('name cannot be empty');
     userPatch.name = nextName;
   }
-  if (Object.keys(userPatch).length > 0 && doctor.userId) {
-    await User.updateOne({ _id: doctor.userId._id }, { $set: userPatch });
-  }
 
-  await doctor.save();
-  const fresh = await Doctor.findById(doctor._id).populate('userId', 'name email phone');
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(data).length) {
+      await tx.doctor.update({ where: { id: doctor.id }, data });
+    }
+    if (Object.keys(userPatch).length) {
+      await tx.user.update({ where: { id: doctor.userId }, data: userPatch });
+    }
+  });
+
+  const fresh = await prisma.doctor.findUnique({ where: { id: doctor.id }, include: INCLUDE_USER });
 
   // Schedule/fee/availability changes ripple through the directory and grids.
   await cache.delPrefix('doctors:list:');
-  await cache.delPrefix(`slots:${doctor._id}`);
-  realtime.slotsChanged(doctor._id);
+  await cache.delPrefix(`slots:${doctor.id}`);
+  realtime.slotsChanged(doctor.id);
 
   res.json({ data: doctorSummary(fresh) });
 });
@@ -254,23 +257,24 @@ const updateDoctor = asyncHandler(async (req, res) => {
  * PATCH /api/doctors/:id/status — admin deactivates/reactivates (soft delete).
  */
 const setDoctorActive = asyncHandler(async (req, res) => {
-  const doctor = await Doctor.findOne({ _id: req.params.id }).populate('userId', 'name email');
+  const doctor = await prisma.doctor.findUnique({ where: { id: req.params.id }, include: INCLUDE_USER });
   if (!doctor) throw notFound('Doctor not found');
   if (typeof req.body.isActive !== 'boolean') throw badRequest('isActive must be a boolean');
 
-  doctor.isActive = req.body.isActive;
-  await doctor.save();
-
-  // Flip the linked auth account so the doctor can no longer log in.
-  await User.updateOne({ _id: doctor.userId._id }, { $set: { isActive: req.body.isActive } });
+  const { isActive } = req.body;
+  await prisma.$transaction([
+    prisma.doctor.update({ where: { id: doctor.id }, data: { isActive } }),
+    // Flip the linked auth account so the doctor can no longer log in.
+    prisma.user.update({ where: { id: doctor.userId }, data: { isActive } }),
+  ]);
 
   await cache.delPrefix('doctors:list:');
-  await cache.delPrefix(`slots:${doctor._id}`);
-  realtime.slotsChanged(doctor._id);
+  await cache.delPrefix(`slots:${doctor.id}`);
+  realtime.slotsChanged(doctor.id);
 
   res.json({
-    message: req.body.isActive ? 'Doctor account reactivated' : 'Doctor account deactivated',
-    data: doctorSummary(doctor),
+    message: isActive ? 'Doctor account reactivated' : 'Doctor account deactivated',
+    data: doctorSummary({ ...doctor, isActive }),
   });
 });
 

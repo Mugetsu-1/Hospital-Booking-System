@@ -65,7 +65,7 @@ npm run test:e2e         # 72 end-to-end API assertions
 | Password | length 6–128 | shorter than 6 |
 | Booking date | real day on or after today | past day / impossible day (`2026-02-30`) / malformed |
 | Booking time | a grid `HH:MM` start | off-grid (`09:07`), `25:00`, missing |
-| Doctor id | ObjectId of an active doctor | invalid ObjectId, deactivated, on leave |
+| Doctor id | UUID of an active doctor | invalid UUID, deactivated, on leave |
 | Symptoms | any length ≤ 2000 | longer than 2000 |
 | Fee | number ≥ 0 | negative / non-numeric |
 | Age | integer 0–130 | negative, > 130, non-numeric |
@@ -109,7 +109,7 @@ logic ([`backend/src/middleware/validate.js`](../../backend/src/middleware/valid
 
 - `POST /auth/register` → name, email, password 6–128, optional phone/age/gender/address/contact
 - `POST /auth/login` → email + password present
-- `POST /appointments` → `doctorId` MongoId, real `YYYY-MM-DD` date, `HH:MM` time, symptoms ≤ 2000
+- `POST /appointments` → `doctorId` UUID, real `YYYY-MM-DD` date, `HH:MM` time, symptoms ≤ 2000
 - `POST /:id/reschedule` → real date + `HH:MM` time
 - `PATCH /:id/status` → one of the 4 lifecycle states
 - `PATCH /:id/notes` → notes/diagnosis/prescription length limits

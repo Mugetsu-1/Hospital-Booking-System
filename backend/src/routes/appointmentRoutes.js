@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const ctrl = require('../controllers/appointmentController');
-const Appointment = require('../models/Appointment');
+const { STATUSES } = require('../domain/appointment');
 const { isRealDate } = require('../utils/slots');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
@@ -19,7 +19,7 @@ router.post(
   requireAuth,
   requireRole('patient'),
   validate([
-    body('doctorId').notEmpty().withMessage('doctorId is required').isMongoId().withMessage('Invalid doctorId'),
+    body('doctorId').notEmpty().withMessage('doctorId is required').isUUID().withMessage('Invalid doctorId'),
     ...slotRules(),
     body('symptoms').optional({ values: 'falsy' }).trim().isLength({ max: 2000 }).withMessage('Symptoms must be 2000 characters or fewer'),
   ]),
@@ -36,7 +36,7 @@ router.post('/:id/cancel', requireAuth, ctrl.cancelAppointment);
 router.patch(
   '/:id/status',
   requireAuth,
-  validate([body('status').isIn(Appointment.STATUSES).withMessage('Invalid appointment status')]),
+  validate([body('status').isIn(STATUSES).withMessage('Invalid appointment status')]),
   ctrl.updateStatus
 );
 router.patch(
