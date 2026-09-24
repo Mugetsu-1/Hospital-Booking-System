@@ -165,7 +165,7 @@ export default function AdminDashboard() {
       byStatus[a.status] = (byStatus[a.status] || 0) + 1;
       if (a.date === today && a.status !== 'Cancelled') todayCount += 1;
       if (a.status === 'Completed') {
-        revenue += Number((a.doctorId && a.doctorId.consultationFee) || 0);
+        revenue += Number(a.doctorConsultationFee || 0);
       }
     });
 
@@ -240,7 +240,7 @@ export default function AdminDashboard() {
         : `${doctor.doctorName} will be hidden from the directory and blocked from signing in. Existing appointment records are kept.`,
       confirmLabel: isActive ? 'Reactivate' : 'Deactivate',
       danger: !isActive,
-      action: () => api.patch(`/doctors/${doctor._id}/status`, { isActive }),
+      action: () => api.patch(`/doctors/${doctor.id}/status`, { isActive }),
       success: isActive ? 'Doctor account reactivated' : 'Doctor account deactivated',
     });
 
@@ -252,15 +252,15 @@ export default function AdminDashboard() {
         : `${patient.name} will no longer be able to sign in. This is a soft delete: their medical history stays in the ledger.`,
       confirmLabel: isActive ? 'Reactivate' : 'Deactivate',
       danger: !isActive,
-      action: () => api.delete(`/patients/${patient._id}`, { data: { isActive } }),
+      action: () => api.delete(`/patients/${patient.id}`, { data: { isActive } }),
       success: isActive ? 'Patient account reactivated' : 'Patient account deactivated',
     });
 
   const confirmAppointment = (a) =>
-    run(() => api.patch(`/appointments/${a._id}/status`, { status: 'Confirmed' }), 'Appointment confirmed');
+    run(() => api.patch(`/appointments/${a.id}/status`, { status: 'Confirmed' }), 'Appointment confirmed');
 
   const completeAppointment = (a) =>
-    run(() => api.patch(`/appointments/${a._id}/status`, { status: 'Completed' }), 'Appointment marked as completed');
+    run(() => api.patch(`/appointments/${a.id}/status`, { status: 'Completed' }), 'Appointment marked as completed');
 
   const cancelAppointment = (a) =>
     ask({
@@ -268,7 +268,7 @@ export default function AdminDashboard() {
       body: `Cancel the ${fmtDate(a.date)} ${fmtTime(a.startTime)} appointment for ${a.patientName || 'this patient'}? The slot returns to the available pool.`,
       confirmLabel: 'Cancel appointment',
       danger: true,
-      action: () => api.post(`/appointments/${a._id}/cancel`, {}),
+      action: () => api.post(`/appointments/${a.id}/cancel`, {}),
       success: 'Appointment cancelled and the slot released',
     });
 
@@ -278,7 +278,7 @@ export default function AdminDashboard() {
       body: `Permanently delete the ${fmtDate(a.date)} ${fmtTime(a.startTime)} record for ${a.patientName || 'this patient'} (${a.status}). Consultation notes attached to it are destroyed and this cannot be undone.`,
       confirmLabel: 'Purge record',
       danger: true,
-      action: () => api.delete(`/appointments/${a._id}`),
+      action: () => api.delete(`/appointments/${a.id}`),
       success: 'Medical record purged',
     });
 
@@ -478,7 +478,7 @@ function Overview({ stats, todaySchedule, latestBookings }) {
                 </thead>
                 <tbody>
                   {todaySchedule.map((a) => (
-                    <tr key={a._id}>
+                    <tr key={a.id}>
                       <td className="td-strong">{fmtTime(a.startTime)}</td>
                       <td>{a.patientName || '—'}</td>
                       <td className="td-muted">{a.doctorName || '—'}</td>
@@ -513,7 +513,7 @@ function Overview({ stats, todaySchedule, latestBookings }) {
                 </thead>
                 <tbody>
                   {latestBookings.map((a) => (
-                    <tr key={a._id}>
+                    <tr key={a.id}>
                       <td className="td-muted">{fmtDateTime(a.createdAt)}</td>
                       <td className="td-strong">
                         {fmtDate(a.date)}
@@ -623,7 +623,7 @@ function DoctorsTab({
             </thead>
             <tbody>
               {rows.map((d) => (
-                <tr key={d._id}>
+                <tr key={d.id}>
                   <td>
                     <div className="td-strong">{d.doctorName || '—'}</div>
                     <div className="td-muted">{d.email}</div>
@@ -640,7 +640,7 @@ function DoctorsTab({
                     ) : (
                       <div className="sch-chips">
                         {d.availableSlots.map((b, i) => (
-                          <span className="sch-chip" key={`${d._id}-${i}`}>
+                          <span className="sch-chip" key={`${d.id}-${i}`}>
                             {b.day.slice(0, 3)} {fmtTime(b.startTime)}&ndash;{fmtTime(b.endTime)} &middot;{' '}
                             {b.slotDurationMins}m
                           </span>
@@ -765,7 +765,7 @@ function PatientsTab({
             </thead>
             <tbody>
               {rows.map((p) => (
-                <tr key={p._id}>
+                <tr key={p.id}>
                   <td>
                     <div className="td-strong">{p.name}</div>
                     <div className="td-muted">Joined {fmtDateTime(p.createdAt)}</div>
@@ -779,7 +779,7 @@ function PatientsTab({
                     <div className="td-muted">{p.gender || 'Not stated'}</div>
                   </td>
                   <td className="td-muted">{p.emergencyContact || '—'}</td>
-                  <td className="td-strong">{apptCountByPatient.get(String(p._id)) || 0}</td>
+                  <td className="td-strong">{apptCountByPatient.get(String(p.id)) || 0}</td>
                   <td>
                     {p.isActive ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Deactivated</Badge>}
                   </td>
@@ -895,7 +895,7 @@ function AppointmentsTab({
           >
             <option value="">All doctors</option>
             {doctors.map((d) => (
-              <option key={d._id} value={d._id}>
+              <option key={d.id} value={d.id}>
                 {d.doctorName} &middot; {d.specialization}
               </option>
             ))}
@@ -978,7 +978,7 @@ function AppointmentsTab({
             </thead>
             <tbody>
               {rows.map((a) => (
-                <tr key={a._id}>
+                <tr key={a.id}>
                   <td>
                     <div className="td-strong">{fmtDate(a.date)}</div>
                     <div className="td-muted">
@@ -994,8 +994,8 @@ function AppointmentsTab({
                     <div className="td-muted">{a.doctorSpecialization || ''}</div>
                   </td>
                   <td className="td-strong">
-                    {a.doctorId && a.doctorId.consultationFee !== undefined
-                      ? fmtMoney(a.doctorId.consultationFee)
+                    {a.doctorConsultationFee !== undefined && a.doctorConsultationFee !== null
+                      ? fmtMoney(a.doctorConsultationFee)
                       : '—'}
                   </td>
                   <td>
@@ -1154,7 +1154,7 @@ function DoctorFormModal({ mode, doctor, onClose, onSaved }) {
     setError('');
     try {
       if (editing) {
-        await api.patch(`/doctors/${doctor._id}`, payload);
+        await api.patch(`/doctors/${doctor.id}`, payload);
         await onSaved(`${payload.name} updated`);
       } else {
         await api.post('/doctors', {
@@ -1352,7 +1352,7 @@ function PatientEditModal({ patient, onClose, onSaved }) {
     setBusy(true);
     setError('');
     try {
-      await api.patch(`/patients/${patient._id}`, {
+      await api.patch(`/patients/${patient.id}`, {
         name: form.name.trim(),
         phone: form.phone.trim(),
         age: form.age === '' ? undefined : Number(form.age),
@@ -1447,7 +1447,7 @@ function NotesModal({ appointment, onClose, onSaved }) {
     setBusy(true);
     setError('');
     try {
-      await api.patch(`/appointments/${appointment._id}/notes`, payload);
+      await api.patch(`/appointments/${appointment.id}/notes`, payload);
       await onSaved('Consultation record saved');
     } catch (err) {
       setError(err.message);

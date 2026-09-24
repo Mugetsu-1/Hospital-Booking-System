@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { ErrorBanner, FormField } from '../components/ui';
@@ -14,16 +14,9 @@ export default function Login() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (user) {
-    const target =
-      user.role === 'doctor'
-        ? '/doctor'
-        : user.role === 'admin'
-          ? '/admin'
-          : '/patient/appointments';
-    navigate(target, { replace: true });
-    return null;
-  }
+  // Already signed in: bounce to the role home via HomeRedirect. A declarative
+  // <Navigate> avoids calling navigate() during render (StrictMode-safe).
+  if (user) return <Navigate to="/" replace />;
 
   function change(e) {
     setForm({ ...form, [e.target.name]: e.target.value });

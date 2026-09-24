@@ -40,7 +40,7 @@ export default function BrowseDoctors() {
   // just-booked slot disappears without a manual reload.
   useEffect(() => {
     return onRealtime('slots:changed', (payload) => {
-      if (bookingFor && payload && String(payload.doctorId) === String(bookingFor._id)) {
+      if (bookingFor && payload && String(payload.doctorId) === String(bookingFor.id)) {
         setSlotRefresh((n) => n + 1);
       }
     });
@@ -140,7 +140,7 @@ export default function BrowseDoctors() {
       {!loading && !error && doctors.length > 0 && (
         <div className="grid-cards">
           {doctors.map((doc) => (
-            <div className="doctor-card card" key={doc._id}>
+            <div className="doctor-card card" key={doc.id}>
               <div className="doc-head">
                 <div className="doc-avatar-lg">{initials(doc.doctorName)}</div>
                 <div>
@@ -207,7 +207,7 @@ function BookingModal({ doctor, onBooked, onClose, refreshSignal = 0 }) {
     setSlots([]);
     setOnLeave(false);
     api
-      .get(`/doctors/${doctor._id}/slots?date=${date}`)
+      .get(`/doctors/${doctor.id}/slots?date=${date}`)
       .then((res) => {
         if (!active) return;
         setSlots(res.data.slots || []);
@@ -223,14 +223,14 @@ function BookingModal({ doctor, onBooked, onClose, refreshSignal = 0 }) {
     return () => {
       active = false;
     };
-  }, [doctor._id, date, refreshSignal]);
+  }, [doctor.id, date, refreshSignal]);
 
   const submitBooking = async () => {
     setError('');
     setSubmitting(true);
     try {
       await api.post('/appointments', {
-        doctorId: doctor._id,
+        doctorId: doctor.id,
         date,
         time,
         symptoms,

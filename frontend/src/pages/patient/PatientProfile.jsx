@@ -43,7 +43,7 @@ export default function PatientProfile() {
       emergencyContact: form.emergencyContact.trim(),
     };
     try {
-      const res = await api.patch(`/patients/${user._id}`, payload);
+      const res = await api.patch(`/patients/${user.id}`, payload);
       patchUser(res.data.data);
       setForm(fromUser(res.data.data));
       setNotice('Profile updated.');

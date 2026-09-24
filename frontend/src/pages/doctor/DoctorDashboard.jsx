@@ -16,7 +16,6 @@ import {
 } from '../../utils/helpers';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const STATUSES = ['Pending', 'Confirmed', 'Completed', 'Cancelled'];
 const DURATIONS = [15, 30, 45, 60];
 const VIEWS = [
   { key: 'day', label: 'Day' },
@@ -185,7 +184,7 @@ export default function DoctorDashboard() {
   }, []);
 
   function confirmAppt(a) {
-    return run(() => api.patch(`/appointments/${a._id}/status`, { status: 'Confirmed' }), 'Appointment confirmed');
+    return run(() => api.patch(`/appointments/${a.id}/status`, { status: 'Confirmed' }), 'Appointment confirmed');
   }
 
   function saveComplete() {
@@ -194,7 +193,7 @@ export default function DoctorDashboard() {
     const record = trimmedRecord(completeRec);
     setComplete(null);
     return run(
-      () => api.patch(`/appointments/${appt._id}/status`, { status: 'Completed', ...record }),
+      () => api.patch(`/appointments/${appt.id}/status`, { status: 'Completed', ...record }),
       'Appointment marked as completed'
     );
   }
@@ -203,7 +202,7 @@ export default function DoctorDashboard() {
     if (!cancel) return;
     const appt = cancel;
     setCancel(null);
-    return run(() => api.post(`/appointments/${appt._id}/cancel`, {}), 'Appointment cancelled');
+    return run(() => api.post(`/appointments/${appt.id}/cancel`, {}), 'Appointment cancelled');
   }
 
   function saveNotes() {
@@ -212,7 +211,7 @@ export default function DoctorDashboard() {
     const record = trimmedRecord(notesRec);
     setNotes(null);
     return run(
-      () => api.patch(`/appointments/${appt._id}/notes`, record),
+      () => api.patch(`/appointments/${appt.id}/notes`, record),
       'Consultation record saved'
     );
   }
@@ -360,7 +359,7 @@ export default function DoctorDashboard() {
         ) : (
           <div className="stack">
             {shown.map((a) => (
-              <div className="card row-between" key={a._id}>
+              <div className="card row-between" key={a.id}>
                 <div className="appt-info">
                   <p>
                     <strong>
@@ -370,8 +369,8 @@ export default function DoctorDashboard() {
                   </p>
                   <p className="muted">
                     {a.patientName}
-                    {a.patientId && a.patientId.age ? `, ${a.patientId.age} yrs` : ''}
-                    {a.patientId && a.patientId.gender ? `, ${a.patientId.gender}` : ''}
+                    {a.patientAge ? `, ${a.patientAge} yrs` : ''}
+                    {a.patientGender ? `, ${a.patientGender}` : ''}
                   </p>
                   {a.symptoms ? (
                     <p className="small">Symptoms: {a.symptoms}</p>
@@ -382,9 +381,9 @@ export default function DoctorDashboard() {
                     <p className="small">Notes: {a.consultationNotes}</p>
                   ) : null}
                   {a.cancelledBy ? <p className="small muted">{CANCEL_LABEL[a.cancelledBy] || 'Cancelled'}</p> : null}
-                  {a.patientId && a.patientId.phone ? (
+                  {a.patientPhone ? (
                     <p className="small">
-                      <a href={`tel:${a.patientId.phone}`}>{a.patientId.phone}</a>
+                      <a href={`tel:${a.patientPhone}`}>{a.patientPhone}</a>
                     </p>
                   ) : null}
                 </div>
@@ -426,7 +425,7 @@ export default function DoctorDashboard() {
 
       {settings && (
         <ScheduleSettings
-          profileId={profile._id}
+          profileId={profile.id}
           initial={settings}
           busy={busy}
           onClose={() => setSettingsOpen(false)}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { ErrorBanner, FormField } from '../components/ui';
@@ -24,10 +24,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (user) {
-    navigate('/patient/appointments', { replace: true });
-    return null;
-  }
+  if (user) return <Navigate to="/" replace />;
 
   function change(e) {
     setForm({ ...form, [e.target.name]: e.target.value });

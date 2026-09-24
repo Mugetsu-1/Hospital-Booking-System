@@ -2,9 +2,11 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/Protected';
 import Navbar from './components/Navbar';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
+import NotFound from './pages/NotFound';
 import MyAppointments from './pages/patient/MyAppointments';
 import BrowseDoctors from './pages/patient/BrowseDoctors';
 import PatientProfile from './pages/patient/PatientProfile';
@@ -24,34 +26,36 @@ export default function App() {
     <>
       <Navbar />
       <main className="page">
-        <Routes>
-          <Route path="/" element={<HomeRedirect />} />
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<HomeRedirect />} />
 
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          <Route element={<ProtectedRoute />}>
-            <Route path="/patient" element={<Navigate to="/patient/appointments" replace />} />
-            <Route path="/patient/appointments" element={<ProtectedRoute roles={['patient']} />}>
-              <Route index element={<MyAppointments />} />
-            </Route>
-            <Route path="/patient/browse" element={<ProtectedRoute roles={['patient']} />}>
-              <Route index element={<BrowseDoctors />} />
-            </Route>
-            <Route path="/patient/profile" element={<ProtectedRoute roles={['patient']} />}>
-              <Route index element={<PatientProfile />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/patient" element={<Navigate to="/patient/appointments" replace />} />
+              <Route path="/patient/appointments" element={<ProtectedRoute roles={['patient']} />}>
+                <Route index element={<MyAppointments />} />
+              </Route>
+              <Route path="/patient/browse" element={<ProtectedRoute roles={['patient']} />}>
+                <Route index element={<BrowseDoctors />} />
+              </Route>
+              <Route path="/patient/profile" element={<ProtectedRoute roles={['patient']} />}>
+                <Route index element={<PatientProfile />} />
+              </Route>
+
+              <Route path="/doctor" element={<ProtectedRoute roles={['doctor']} />}>
+                <Route index element={<DoctorDashboard />} />
+              </Route>
+              <Route path="/admin" element={<ProtectedRoute roles={['admin']} />}>
+                <Route index element={<AdminDashboard />} />
+              </Route>
             </Route>
 
-            <Route path="/doctor" element={<ProtectedRoute roles={['doctor']} />}>
-              <Route index element={<DoctorDashboard />} />
-            </Route>
-            <Route path="/admin" element={<ProtectedRoute roles={['admin']} />}>
-              <Route index element={<AdminDashboard />} />
-            </Route>
-          </Route>
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </>
   );

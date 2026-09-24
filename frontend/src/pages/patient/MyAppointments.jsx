@@ -10,7 +10,6 @@ import {
   EmptyState,
   Modal,
   Badge,
-  FormField,
 } from '../../components/ui';
 import { todayStr, fmtDate, fmtTime, to12h, statusTone, idOf } from '../../utils/helpers';
 
@@ -140,7 +139,7 @@ export default function MyAppointments() {
             </thead>
             <tbody>
               {appointments.map((a) => (
-                <tr key={a._id}>
+                <tr key={a.id}>
                   <td>
                     <strong>{a.doctorName}</strong>
                     <div className="muted small">{a.doctorSpecialization}</div>
@@ -270,7 +269,7 @@ function ActionModal({ action, onClose, onDone }) {
       setSubmitting(true);
       setError('');
       try {
-        await api.post(`/appointments/${appointment._id}/cancel`);
+        await api.post(`/appointments/${appointment.id}/cancel`);
         onDone('Appointment cancelled.');
       } catch (err) {
         setError(err.message || 'Could not cancel appointment');
@@ -342,7 +341,7 @@ function RescheduleModal({ appointment, onClose, onDone }) {
     setError('');
     setSubmitting(true);
     try {
-      await api.post(`/appointments/${appointment._id}/reschedule`, { date, time });
+      await api.post(`/appointments/${appointment.id}/reschedule`, { date, time });
       onDone('Appointment rescheduled.');
     } catch (err) {
       setError(err.message || 'Could not reschedule appointment');

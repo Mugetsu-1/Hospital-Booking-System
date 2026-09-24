@@ -26,7 +26,7 @@ export function fromDateString(dateStr) {
  */
 export function idOf(value) {
   if (!value) return '';
-  return String(typeof value === 'object' ? value._id || '' : value);
+  return String(typeof value === 'object' ? value.id || '' : value);
 }
 
 export function fmtDate(dateStr) {
