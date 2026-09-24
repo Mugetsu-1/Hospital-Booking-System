@@ -3,7 +3,10 @@ services:
     name: hospital-booking-api
     runtime: node
     rootDir: backend
-    buildCommand: npm install
+    # --include=dev keeps the Prisma CLI available even though NODE_ENV is
+    # 'production'; db:setup generates the client, pushes the schema and
+    # creates the partial unique index for live appointment slots.
+    buildCommand: npm install --include=dev && npm run db:setup
     startCommand: npm start
     healthCheckPath: /api/health
     plan: free
@@ -12,12 +15,15 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: MONGODB_URI
+      # PostgreSQL connection string — Supabase (session pooler / direct) or
+      # Render Postgres. Paste the value in the Render dashboard.
+      - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
+      # Frontend origin (Vercel URL), e.g. https://your-app.vercel.app
       - key: CLIENT_URL
         sync: false
       - key: REDIS_URL
@@ -26,3 +32,11 @@ services:
         value: false
       - key: CACHE_TTL_SECONDS
         value: 60
+
+# Optional: provision a Render PostgreSQL database instead of Supabase and
+# point DATABASE_URL at its internal connection string.
+# databases:
+#   - name: hospital-booking-db
+#     plan: free
+#     databaseName: hospital_booking
+#     user: hospital

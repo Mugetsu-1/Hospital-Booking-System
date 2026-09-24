@@ -9,6 +9,28 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+
+    # Ephemeral PostgreSQL for the schema/e2e steps (Supabase/Render provide
+    # the equivalent database in the deployed environment).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hospital_booking
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/hospital_booking?schema=public
+      JWT_SECRET: ci_test_secret_value
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -30,12 +52,34 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Apply Database Schema
+        working-directory: backend
+        run: npm run db:setup
+
+      - name: Seed Demo Data
+        working-directory: backend
+        run: npm run seed
+
       - name: Run Syntax & Lint Checks
         run: npm run lint --if-present
 
       - name: Run Unit Test Suite (offline)
         working-directory: backend
         run: npm test
+
+      - name: Start API
+        working-directory: backend
+        run: |
+          nohup npm start > api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:5000/api/health > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo '--- api.log ---'; cat api.log; exit 1
+
+      - name: Run End-to-End API Suite
+        working-directory: backend
+        run: npm run test:e2e
 
       - name: Build Production Bundle
         working-directory: frontend
