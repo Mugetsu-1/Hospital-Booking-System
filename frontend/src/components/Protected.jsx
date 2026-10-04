@@ -17,7 +17,3 @@ export default function ProtectedRoute({ roles }) {
   }
   return <Outlet />;
 }
-
-export function roleHomeFor(role) {
-  return roleHome(role);
-}

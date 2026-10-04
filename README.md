@@ -1,10 +1,12 @@
 # Hospital Doctor Appointment Booking System
 
-**Software Engineering Lab Project — Full-Stack PERN Application**
+**Software Engineering Lab Project — Full-Stack CRUD Application on PostgreSQL**
 
 | | |
 | :--- | :--- |
-| **Author** | Student developer, single-student project |
+| **Author** | Saugat Bikram Thapa (80117731, BSc.CSIT) |
+| **Subject** | Software Engineering · ACHS |
+| **Instructor** | Saroja Bhandari |
 | **Repository** | [Mugetsu-1/Hospital-Booking-System](https://github.com/Mugetsu-1/Hospital-Booking-System) |
 | **Branch** | `main` · CI: [`.github/workflows/main.yml`](.github/workflows/main.yml) |
 | **Status** | ✅ 21 unit + 72 e2e assertions passing · production build green |
@@ -176,34 +178,45 @@ e2e API suite against the running server, and a production frontend build.
 
 ```
 backend/
-  prisma/
-    schema.prisma    PostgreSQL tables, enums, indexes
-  prisma.config.ts   Prisma 7 config (DATABASE_URL, schema path)
+  prisma/schema.prisma    PostgreSQL tables, enums, indexes
+  prisma.config.ts        Prisma 7 config (DATABASE_URL, schema path)
   src/
-    db.js            Prisma client + pg driver adapter + index bootstrap
-    config/          environment and policy knobs (cancel cutoff, notes window)
-    domain/          appointment status state machine (pure, unit-tested)
-    controllers/     auth, doctors, patients, appointments
-    middleware/      JWT auth, role guards, express-validator, central error handler
-    routes/          Express routers mounted under /api
-    utils/           pure slot-grid and date helpers, serializers, Redis cache
-    services/        realtime (Socket.IO), mailer (Nodemailer)
+    server.js             entrypoint: DB connect, Socket.IO mount, listen
+    app.js                Express app: CORS, JSON, /api/health, routers
+    db.js                 Prisma client + pg driver adapter + index bootstrap
+    config/               environment and policy knobs (cutoff, notes window)
+    domain/               appointment status state machine (pure, unit-tested)
+    controllers/          auth, doctors, patients, appointments
+    middleware/           JWT auth + RBAC, express-validator, error handler
+    routes/               Express routers mounted under /api
+    utils/                slot-grid & date helpers, serializers, cache, errors
+    services/             realtime (Socket.IO), mailer (Nodemailer)
   scripts/
-    db-setup.js      creates the partial unique index Prisma cannot express
-    seed.js          demo data
-  tests/             node:test unit tests (offline) + TEST_MATRIX.md
-    e2e/api.e2e.js   end-to-end API suite (needs a running, seeded API)
+    db-setup.js           creates the partial unique index Prisma cannot express
+    seed.js               demo hospital data
+  tests/                  node:test unit tests (offline) + TEST_MATRIX.md
+    e2e/api.e2e.js        end-to-end API suite (needs a running, seeded API)
 frontend/
+  index.html
+  vite.config.js          dev server + /api and /socket.io proxy
   src/
-    pages/           patient, doctor and admin screens
-    components/      shared UI primitives, route guards, skeleton loaders
-    context/         auth/session provider, toast notification provider
-    api/             axios client
-    realtime.js      Socket.IO client (fail-open)
-    utils/           formatting and date-range helpers
-docs/                Mermaid diagrams + PROJECT_SUMMARY.md
-screenshots/         capture checklist for the report
-.github/workflows/   CI pipeline
+    main.jsx  App.jsx     entrypoint and route table
+    pages/                patient/, doctor/, admin/, Login, Register, NotFound
+    components/           UI primitives, Protected guard, ErrorBoundary, Skeleton
+    context/              auth/session provider, toast provider
+    api/client.js         axios client (JWT interceptor, 401 cleanup)
+    realtime.js           Socket.IO client (fail-open)
+    utils/helpers.js      formatting and date-range helpers
+docs/
+  LAB_REPORT.md/.docx     the lab report (source of truth + generated Word file)
+  use-case · class-diagram · sequence-diagrams
+  dfd-context · dfd-level1 · dfd-level2-booking · erd · architecture
+  PROJECT_SUMMARY.md      technical summary
+  build-docx.mjs          renders Mermaid → PNG → .docx
+  capture-screenshots.mjs headless-Chromium capture for Appendix A
+screenshots/               UI evidence PNGs (report Appendix A)
+backend/tests/TEST_MATRIX.md  black-box matrix, BVA, RBAC cases
+.github/workflows/main.yml CI pipeline
 ```
 
 ## Troubleshooting

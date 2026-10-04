@@ -38,13 +38,14 @@ Every box in these diagrams maps to a real directory or file:
 
 ## Exporting the lab report to Word (`.docx`)
 
-[`LAB_REPORT.md`](./LAB_REPORT.md) is the canonical submission document and
+`docs/` is the canonical submission document and
 renders fully on GitHub (all Mermaid diagrams included). To produce a
 `LAB_REPORT.docx` with the diagrams rasterised as images, run the reproducible
-build script from the repo root:
+build script from `docs/`:
 
 ```bash
-node docs/build-docx.mjs
+cd docs && npm install       # once — installs mermaid-cli, marked, html-to-docx
+npm run build:docx           # -> docs/LAB_REPORT.docx
 ```
 
 It renders every `mermaid` block to a PNG via
@@ -55,3 +56,17 @@ Markdown → HTML → `.docx` with [`marked`](https://github.com/markedjs/marked
 pipeline with no external binaries (dependencies are installed via `npm install` in
 `docs/`). The script reads the report markdown directly, so the Word export can never
 drift from the source.
+
+## Capturing the screenshots (report Appendix A)
+
+```bash
+# requires the API on :5000 and the Vite dev server on :5173, plus a fresh seed
+npm run seed    # from backend/
+npm run dev     # from the repo root
+cd docs && npm run capture
+```
+
+`capture-screenshots.mjs` drives headless Chromium, authenticates against the
+API for a JWT and seeds `localStorage`, then writes each PNG into
+[`screenshots/`](../screenshots). It is deterministic and side-steps React
+controlled-input quirks, so re-running it reproduces the same Appendix A.

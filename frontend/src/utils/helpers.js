@@ -78,20 +78,6 @@ export function addMonths(dateStr, n) {
   return toDateInput(new Date(target.getFullYear(), target.getMonth(), Math.min(d, lastDay)));
 }
 
-export function dayFromDate(dateStr) {
-  if (!dateStr) return '';
-  const days = [
-    'Sunday',
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-  ];
-  return days[fromDateString(dateStr).getDay()];
-}
-
 export function fmtTime(t) {
   if (!t) return '';
   const [h, m] = t.split(':').map(Number);
