@@ -1,5 +1,11 @@
 # Hospital Doctor Appointment Booking System
 
+[![CI](https://github.com/Mugetsu-1/Hospital-Booking-System/actions/workflows/main.yml/badge.svg)](https://github.com/Mugetsu-1/Hospital-Booking-System/actions/workflows/main.yml)
+![Node](https://img.shields.io/badge/Node-20%2B-339933?logo=node.js&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![License](https://img.shields.io/badge/License-Academic-blue)
+
 **Software Engineering Lab Project — Full-Stack CRUD Application on PostgreSQL**
 
 | | |
@@ -18,6 +24,28 @@
 > manage the directory, accounts and the hospital-wide ledger. Engineered with
 > a concurrency-safe slot model, JWT + RBAC, request validation and an optional
 > Redis / Socket.IO / Nodemailer tier that fails open.
+
+## Screenshots
+
+| Register | Login |
+| :---: | :---: |
+| ![Patient registration](screenshots/01-register.png) | ![Login](screenshots/02-login.png) |
+
+| Doctor directory | Slot picker |
+| :---: | :---: |
+| ![Doctor directory with search and filters](screenshots/03-browse-doctors.png) | ![Computed slot grid with date picker](screenshots/04-slot-picker.png) |
+
+| Appointment history | Doctor queue |
+| :---: | :---: |
+| ![My Appointments with status tabs](screenshots/08-appointment-history.png) | ![Doctor day queue](screenshots/11-doctor-queue-day.png) |
+
+| Admin overview | Admin ledger |
+| :---: | :---: |
+| ![Admin statistics dashboard](screenshots/16-admin-overview.png) | ![Hospital-wide appointment ledger](screenshots/20-admin-ledger.png) |
+
+All 11 captured screens are listed in the
+**[screenshot checklist](screenshots/README.md)** and shipped as
+**Appendix A** of the [lab report](docs/LAB_REPORT.md).
 
 ## Documentation
 

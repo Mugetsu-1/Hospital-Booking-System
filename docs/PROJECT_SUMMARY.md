@@ -5,6 +5,9 @@
 | | |
 | :--- | :--- |
 | **Project** | Hospital Doctor Appointment Booking System |
+| **Student** | Saugat Bikram Thapa · 80117731 · BSc.CSIT |
+| **Subject** | Software Engineering · ACHS |
+| **Instructor** | Saroja Bhandari |
 | **Repository** | `Mugetsu-1/Hospital-Booking-System` |
 | **Type** | Single-student software engineering lab project |
 | **Stack** | React 18 + Vite · Node.js + Express 4 · PostgreSQL (Prisma 7) |
