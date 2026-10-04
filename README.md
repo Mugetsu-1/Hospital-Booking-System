@@ -24,6 +24,11 @@
 > manage the directory, accounts and the hospital-wide ledger. Engineered with
 > a concurrency-safe slot model, JWT + RBAC, request validation and an optional
 > Redis / Socket.IO / Nodemailer tier that fails open.
+>
+> 📄 **The submission document is [`docs/LAB_REPORT.md`](docs/LAB_REPORT.md)**
+> (all 10 required sections). The Word export `LAB_REPORT.docx` is built
+> locally with `npm run build:docx` in `docs/` and is intentionally not
+> versioned — export it with your Submission Date when you submit.
 
 ## Screenshots
 
