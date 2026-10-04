@@ -68,5 +68,5 @@ flowchart LR
 | 3.0 Booking Engine | Slot computation, double-booking protection, lifecycle transitions | `controllers/appointmentController.js`, `utils/slots.js`, `domain/appointment.js` |
 | 4.0 Medical Records | Consultation notes, diagnosis, prescription, 24h edit window, purge | `controllers/appointment.js` (notes/status) |
 
-Data store: PostgreSQL tables `users`, `doctors`, `appointments` (Supabase /
-Render), accessed through Prisma.
+Data store: PostgreSQL tables `users`, `doctors`, `appointments`, accessed
+through Prisma.

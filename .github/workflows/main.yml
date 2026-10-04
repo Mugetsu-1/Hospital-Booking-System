@@ -1,4 +1,4 @@
-name: Node.js CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -10,8 +10,8 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    # Ephemeral PostgreSQL for the schema/e2e steps (Supabase/Render provide
-    # the equivalent database in the deployed environment).
+    # Ephemeral PostgreSQL for the schema/seed/e2e steps, matching the local
+    # development setup.
     services:
       postgres:
         image: postgres:16
@@ -67,19 +67,33 @@ jobs:
         working-directory: backend
         run: npm test
 
-      - name: Start API
-        working-directory: backend
-        run: |
-          nohup npm start > api.log 2>&1 &
-          for i in $(seq 1 30); do
-            if curl -fs http://127.0.0.1:5000/api/health > /dev/null; then exit 0; fi
-            sleep 1
-          done
-          echo '--- api.log ---'; cat api.log; exit 1
-
+      # The API is started, exercised and shut down inside a single step:
+      # a process backgrounded in one step is not guaranteed to survive into
+      # the next one on the Actions runner.
       - name: Run End-to-End API Suite
         working-directory: backend
-        run: npm run test:e2e
+        run: |
+          npm start > api.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:5000/api/health > /dev/null; then break; fi
+            if ! kill -0 $server_pid 2>/dev/null; then
+              echo 'API exited before becoming healthy'
+              cat api.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if ! curl -fs http://127.0.0.1:5000/api/health > /dev/null; then
+            echo 'API did not become healthy within 30s'
+            cat api.log
+            exit 1
+          fi
+
+          npm run test:e2e
 
       - name: Build Production Bundle
         working-directory: frontend

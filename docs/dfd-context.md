@@ -15,7 +15,7 @@ flowchart LR
   end
 
   subgraph store["Data store"]
-    DB[("PostgreSQL — Supabase / Render\nusers · doctors · appointments")]
+    DB[("PostgreSQL\nusers · doctors · appointments")]
   end
 
   P -->|"1  credentials, profile,\nbooking request"| API

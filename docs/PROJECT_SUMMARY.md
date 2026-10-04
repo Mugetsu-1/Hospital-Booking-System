@@ -154,11 +154,11 @@ Layered client–server architecture (full diagram: [`docs/architecture.md`](./a
 | :--- | :--- | :--- |
 | Presentation | React 18 + Vite 5 + React Router 6, Axios | `pages/` per role, shared `components/`, `context/` session, `api/client.js` |
 | Application | Node.js + Express 4 | `routes/` → `controllers/` → Prisma client; `middleware/` for auth, RBAC, validation, errors |
-| Data | PostgreSQL + Prisma 7 (`@prisma/adapter-pg`) | `users`, `doctors`, `appointments` (Supabase or Render Postgres) |
+| Data | PostgreSQL + Prisma 7 (`@prisma/adapter-pg`) | `users`, `doctors`, `appointments` (local PostgreSQL server) |
 | Cache *(optional)* | Redis | Read-through for doctor lists & slot grids; prefix invalidation on writes; 60 s TTL safety net |
 | Realtime *(optional)* | Socket.IO | Same HTTP port, JWT handshake; lightweight `slots:changed` / `appointment:*` triggers; clients refetch via REST |
 | Notifications *(optional)* | Nodemailer | HTML booking/reschedule/cancel/status/notes e-mails; console-log fallback |
-| CI/CD | GitHub Actions | `.github/workflows/main.yml` — Postgres service, schema push, seed, unit tests, e2e API suite, production build |
+| CI | GitHub Actions | `.github/workflows/main.yml` — Postgres service, schema push, seed, unit tests, e2e API suite, production build |
 
 **Fail-open principle.** None of the optional layers is a hard dependency:
 `REDIS_URL` unset → direct PostgreSQL reads; SMTP unset → mail logs and skips;

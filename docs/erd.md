@@ -4,7 +4,7 @@ One `users` row per person; doctors have a linked `doctors` profile; every
 appointment links a patient (`users`) to a doctor (`doctors`) through real
 foreign keys. The schema is defined once in
 [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma) and applied
-with `prisma db push` to Supabase / Render / local PostgreSQL.
+with `prisma db push` to a local PostgreSQL server.
 
 ```mermaid
 erDiagram

@@ -1,7 +1,7 @@
 # System Architecture
 
-Layered architecture with a React SPA, an Express REST API, PostgreSQL
-(Supabase / Render), and three **optional** companion services (Redis,
+Layered architecture with a React SPA, an Express REST API, a local
+PostgreSQL database, and three **optional** companion services (Redis,
 Socket.IO, Nodemailer). Optional layers are fail-open — the application runs
 identically when they are not configured.
 
@@ -22,7 +22,7 @@ flowchart TB
   end
 
   subgraph data["Data Layer"]
-    DB[(PostgreSQL — Supabase / Render\nusers · doctors · appointments)]
+    DB[(PostgreSQL\nusers · doctors · appointments)]
     PRISMA["db.js\nPrisma 7 + @prisma/adapter-pg"]
     CACHE[(Redis · optional\nslot grids · directory)]
   end
@@ -52,7 +52,7 @@ flowchart TB
 | Cache | Redis (optional) | Read-through cache for doctor lists & slot grids |
 | Realtime | Socket.IO (optional) | `slots:changed`, `appointment:*` triggers |
 | Notifications | Nodemailer (optional) | Booking/reschedule/cancel/status/notes e-mails |
-| CI/CD | GitHub Actions | Schema push, seed, unit tests, e2e API suite, production build |
+| CI | GitHub Actions | Schema push, seed, unit tests, e2e API suite, production build |
 
 ## Optional-layer behaviour
 
@@ -61,11 +61,3 @@ flowchart TB
 | Redis | `REDIS_URL` set | Reads query PostgreSQL directly — same responses |
 | Socket.IO | always mounted | clients auto-fallback to REST polling |
 | Nodemailer | `MAIL_ENABLED=true` + SMTP host/from | mail calls log and skip; booking flow unaffected |
-
-## Deployment topology
-
-| Component | Host | Notes |
-| :--- | :--- | :--- |
-| React SPA | Vercel | `VITE_API_URL` points at the Render API (`/api`) |
-| Express API | Render Web Service (`render.yaml`) | Build runs `npm run db:setup`; health probe `/api/health` |
-| PostgreSQL | Supabase *or* Render Postgres | One `DATABASE_URL` connection string; schema pushed by Prisma |

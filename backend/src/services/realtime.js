@@ -18,20 +18,16 @@ let io = null;
 function init(httpServer) {
   if (!httpServer || io) return io;
   try {
-    // In production (Vercel frontend + Render backend) the browser origin
-    // differs from the API origin, so Socket.IO CORS must allow it.
-    // CLIENT_URL is the canonical frontend URL; we also allow any
-    // *.vercel.app preview deployment. REST CORS lives in src/app.js.
-    const allowedOrigins = [config.clientUrl, /\.vercel\.app$/];
+    // In local development the browser origin differs from the API origin
+    // (Vite on :5173, API on :5000), so Socket.IO CORS must allow it.
+    // CLIENT_URL is the frontend origin. REST CORS lives in src/app.js.
+    const allowedOrigins = [config.clientUrl];
     io = new Server(httpServer, {
       path: '/socket.io',
       cors: {
         origin: (origin, cb) => {
           if (!origin) return cb(null, true);
-          const ok = allowedOrigins.some((a) =>
-            a instanceof RegExp ? a.test(origin) : a === origin
-          );
-          return cb(null, ok ? true : false);
+          return cb(null, allowedOrigins.includes(origin));
         },
         methods: ['GET', 'POST'],
         credentials: true,

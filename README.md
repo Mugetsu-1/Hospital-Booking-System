@@ -32,7 +32,7 @@
 | :--- | :--- |
 | Frontend | React 18 + React Router 6, Vite dev server / bundler |
 | Backend | Node.js + Express 4, JWT auth, bcrypt hashing, express-validator |
-| Database | PostgreSQL with Prisma 7 (`@prisma/adapter-pg`) — Supabase or Render |
+| Database | PostgreSQL with Prisma 7 (`@prisma/adapter-pg`) — local server |
 | Cache *(optional, fail-open)* | Redis — read-through for doctor lists & slot grids |
 | Realtime *(optional, fail-open)* | Socket.IO — `slots:changed` / `appointment:*` triggers |
 | Notifications *(optional, fail-open)* | Nodemailer — booking / status / notes e-mails |
@@ -41,10 +41,7 @@
 ## Prerequisites
 
 - **Node.js 20 or newer** (verified on Node 24). `npm` ships with it.
-- **PostgreSQL 15 or newer** — either:
-  - a local server (`localhost:5432` by default), or
-  - a free [Supabase](https://supabase.com) project, or
-  - a Render PostgreSQL instance.
+- **PostgreSQL 15 or newer** running locally on `localhost:5432` by default.
 
   You only need a connection string; Prisma creates the tables for you.
 
@@ -76,15 +73,13 @@ Then edit `backend/.env`:
 Create the database (once) and apply the schema + indexes:
 
 ```bash
-# local PostgreSQL only — skip if you already have a Supabase/Render URL
 createdb hospital_booking
 
 npm run db:setup        # prisma generate + prisma db push + slot index
 ```
 
 The frontend needs no configuration in development: Vite proxies `/api` to
-port 5000. For a deployed build where the API lives on another origin, set
-`VITE_API_URL` (see [frontend/.env.example](./frontend/.env.example)).
+port 5000.
 
 ## Seed the demo data
 
@@ -157,31 +152,7 @@ it but never block it — each degrades to a safe no-op when not configured:
 
 Full environment reference lives in [`backend/.env.example`](backend/.env.example).
 
-## Deployment (Vercel + Render + Supabase)
-
-The repository ships a [`render.yaml`](render.yaml) blueprint for the API.
-
-1. **Database — Supabase.** Create a project, then copy *Project Settings →
-   Database → Connection string* (session pooler or direct). Append
-   `?sslmode=require` if it is not already present. Render PostgreSQL works
-   too — use its **internal** connection string.
-2. **Backend — Render.** New → Blueprint → select this repository. The build
-   command is `npm install --include=dev && npm run db:setup`, which generates
-   the Prisma client, pushes the schema and creates the partial unique slot
-   index. Set `DATABASE_URL` and `CLIENT_URL` (your Vercel URL) in the
-   dashboard; `JWT_SECRET` is generated automatically. Health probe:
-   `/api/health`.
-3. **Frontend — Vercel.** Import the repository, set the root directory to
-   `frontend`, and add `VITE_API_URL=https://<your-render-service>.onrender.com/api`
-   as a build-time environment variable. `frontend/vercel.json` already
-   rewrites SPA routes to `index.html`.
-4. **Seed once (optional).** From the Render shell: `npm run seed`
-   (`SEED_RESET=false` keeps any existing rows).
-
-> Free Render web services sleep when idle; the first request after a pause
-> may take ~30 s while the instance and its Prisma pool wake up.
-
-## CI/CD
+## CI
 
 [`.github/workflows/main.yml`](.github/workflows/main.yml) runs on every push/PR
 to `main`: Node.js 20, `npm ci` across root/backend/frontend, an ephemeral
@@ -232,15 +203,14 @@ frontend/
     utils/           formatting and date-range helpers
 docs/                Mermaid diagrams + PROJECT_SUMMARY.md
 screenshots/         capture checklist for the report
-.github/workflows/   CI/CD pipeline
+.github/workflows/   CI pipeline
 ```
 
 ## Troubleshooting
 
 **`PrismaClientInitializationError` / `P1001` on startup** — PostgreSQL is not
-reachable at `DATABASE_URL`. Check the server is running (local PostgreSQL
-service, or your Supabase/Render instance is not paused) and that the password /
-`sslmode=require` part of the string is correct.
+reachable at `DATABASE_URL`. Check the server is running on the host and port
+in the connection string and that the password is correct.
 
 **`relation "users" does not exist`** — the schema has not been pushed yet. Run
 `npm run db:setup`.

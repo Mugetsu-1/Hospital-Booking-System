@@ -9,18 +9,17 @@ const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
-// Restrict browser origins to the configured frontend plus any *.vercel.app
-// preview deployment; non-browser callers (curl, CI, the health probe) send
-// no Origin and are allowed. Mirrors the Socket.IO CORS in services/realtime.js.
-const allowedOrigins = [config.clientUrl, /\.vercel\.app$/];
+// The SPA and the API normally share an origin locally (the Vite dev server
+// proxies /api), so there is nothing to allow-list by default. When the two run
+// on separate ports, set CLIENT_URL to the frontend origin. Non-browser callers
+// (curl, CI, tests) send no Origin header and are always allowed.
+// Mirrors the Socket.IO CORS in services/realtime.js.
+const allowedOrigins = [config.clientUrl];
 app.use(
   cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
-      const ok = allowedOrigins.some((a) =>
-        a instanceof RegExp ? a.test(origin) : a === origin
-      );
-      return cb(null, ok);
+      return cb(null, allowedOrigins.includes(origin));
     },
     credentials: true,
   })

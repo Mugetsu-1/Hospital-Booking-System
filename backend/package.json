@@ -14,7 +14,7 @@
     "db:push": "prisma db push",
     "db:setup": "prisma generate && prisma db push && node scripts/db-setup.js",
     "seed": "node scripts/seed.js",
-    "test": "node --test \"tests/**/*.test.js\"",
+    "test": "node --test tests/slots.test.js tests/slots.leave.test.js tests/transitions.test.js",
     "test:e2e": "node tests/e2e/api.e2e.js"
   },
   "dependencies": {

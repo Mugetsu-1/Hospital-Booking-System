@@ -4,10 +4,8 @@ module.exports = {
   port: process.env.PORT || 5000,
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  // PostgreSQL connection string (Supabase / Render / local).
-  // Examples:
-  //   local    postgresql://postgres:postgres@127.0.0.1:5432/hospital_booking?schema=public
-  //   supabase postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+  // PostgreSQL connection string.
+  // Example: postgresql://postgres:postgres@127.0.0.1:5432/hospital_booking?schema=public
   databaseUrl: process.env.DATABASE_URL || '',
 
   jwtSecret: process.env.JWT_SECRET || 'dev_secret_change_me',

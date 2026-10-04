@@ -60,7 +60,7 @@ coding task: requirements were captured and modelled (use cases, DFDs, ERD,
 class and sequence diagrams), the database was designed around a
 concurrency-safe slot model, the REST API was layered with authentication,
 role-based access control and request validation, and the whole system was
-verified with automated unit and end-to-end test suites, wired into a CI/CD
+verified with automated unit and end-to-end test suites, wired into a CI
 pipeline.
 
 This report documents the system across the full software-engineering
@@ -111,8 +111,7 @@ All tools listed here are actually used by the repository; nothing is aspiration
 | **E2E testing** | Custom Node HTTP harness (`tests/e2e/api.e2e.js`) | 72 end-to-end API assertions against PostgreSQL |
 | **Modeling / CASE** | Mermaid | Use-case, class, DFD (L0–L2), ERD, sequence diagrams |
 | **Version control** | Git + GitHub | Feature-branch iterative workflow |
-| **CI/CD** | GitHub Actions | `.github/workflows/main.yml` — DB service, schema push, seed, unit + e2e tests, production build |
-| **Deployment** | Vercel (frontend) + Render (backend) | `vercel` config + `render.yaml` |
+| **CI** | GitHub Actions | `.github/workflows/main.yml` — DB service, schema push, seed, unit + e2e tests, production build |
 | **Dev environment** | VS Code, npm, `nodemon` | Editing, scripts, hot-reload dev server |
 
 ### Development process
@@ -149,7 +148,7 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 **Software environment**
 
 - Node.js 20 or newer and npm.
-- A PostgreSQL database (local, Supabase, or Render).
+- A local PostgreSQL database.
 - A modern web browser for the SPA.
 - Optional: a Redis instance, an SMTP account — the system runs fully without
   either.
@@ -586,7 +585,7 @@ design with a concurrency-safe partial unique index, a layered REST
 implementation with JWT/RBAC and request validation, an optional
 performance/realtime/notification tier that is fail-open by design, and
 automated black-box verification with **93 passing assertions** (21 unit + 72
-end-to-end) wired into a CI/CD pipeline.
+end-to-end) wired into a CI pipeline.
 
 ### Learning outcomes
 
