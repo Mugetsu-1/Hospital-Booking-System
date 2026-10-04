@@ -1,6 +1,7 @@
 <!--
   ACHS Software Engineering Lab — Consolidated Lab Report.
-  Replace the «angle-bracket» placeholders on the cover page with your details.
+  Cover-page details are filled in; Submission Date is intentionally left
+  blank for the student to complete at submission time.
   Every Mermaid block renders automatically on GitHub and in the exported .docx.
 -->
 
@@ -26,11 +27,12 @@
 
 | | |
 | :--- | :--- |
-| **Student Name** | «Student Name» |
-| **Roll No.** | «Roll No» |
-| **Course** | «Course» |
-| **Instructor** | «Instructor» |
-| **Submission Date** | «Date» |
+| **Student Name** | Saugat Bikram Thapa |
+| **Roll No.** | 80117731 |
+| **Course** | BSc.CSIT |
+| **Subject** | Software Engineering |
+| **Instructor** | Saroja Bhandari |
+| **Submission Date** |  |
 | **Repository** | `Mugetsu-1/Hospital-Booking-System` |
 
 </div>
