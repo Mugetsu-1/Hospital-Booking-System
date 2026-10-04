@@ -96,6 +96,8 @@ All tools listed here are actually used by the repository; nothing is aspiration
 
 | Category | Tool / Technology | Role in the project |
 | :--- | :--- | :--- |
+| **Project management** | GitHub Issues + GitHub Projects | Requirement breakdown into six capability epics, sprint-sized task lists, and per-task acceptance criteria |
+| **Scheduling / Gantt** | GitHub Projects board | Backlog → In progress → In review → Done columns used as the sprint board; each column acted as a schedule gate before the next |
 | **Language / Runtime** | Node.js 20+, JavaScript (ES2022) | Backend (CommonJS) and frontend (ES Modules) |
 | **Frontend framework** | React 18 + Vite 5 | Single-page application, per-role dashboards |
 | **Routing / HTTP** | React Router 6, Axios | Client-side routing, JWT-aware API client |
@@ -110,11 +112,26 @@ All tools listed here are actually used by the repository; nothing is aspiration
 | **Unit testing** | Node built-in test runner (`node --test`) | 21 offline unit tests (slot maths, transitions, dates) |
 | **E2E testing** | Custom Node HTTP harness (`tests/e2e/api.e2e.js`) | 72 end-to-end API assertions against PostgreSQL |
 | **Modeling / CASE** | Mermaid | Use-case, class, DFD (L0–L2), ERD, sequence diagrams |
-| **Version control** | Git + GitHub | Feature-branch iterative workflow |
+| **Version control** | Git + GitHub | Feature-branch iterative workflow, `main` kept deploy-free and always green |
 | **CI** | GitHub Actions | `.github/workflows/main.yml` — DB service, schema push, seed, unit + e2e tests, production build |
 | **Dev environment** | VS Code, npm, `nodemon` | Editing, scripts, hot-reload dev server |
 
-### Development process
+### 4.1 CASE tools
+
+All models are authored in **Mermaid** inside `docs/` and rendered automatically by
+GitHub; [`docs/build-docx.mjs`](./build-docx.mjs) rasterises the same sources to PNG
+via `mermaid-cli` for the submitted Word document, so the report and the diagrams
+can never drift apart.
+
+| Artefact | Source | Type |
+| :--- | :--- | :--- |
+| Use-case model | [`use-case.md`](./use-case.md) | UML use case (actors, `«include»` relations) |
+| Object model | [`class-diagram.md`](./class-diagram.md) | UML class diagram + domain service |
+| Behaviour | [`sequence-diagrams.md`](./sequence-diagrams.md) | UML sequence (book / confirm / cancel / notes) |
+| Data flow | [`dfd-context.md`](./dfd-context.md), [`dfd-level1.md`](./dfd-level1.md), [`dfd-level2-booking.md`](./dfd-level2-booking.md) | Gane–Sarson DFD L0, L1, L2 |
+| Data model | [`erd.md`](./erd.md) | ERD with cardinality and the partial unique index |
+
+### 4.2 Development process
 
 The project followed an **iterative, feature-branch workflow** on Git/GitHub:
 each capability (auth, directory, booking engine, lifecycle, notes, admin CRUD)
@@ -514,6 +531,20 @@ backed by a documented black-box matrix, equivalence partitioning, and
 boundary-value analysis in
 [`backend/tests/TEST_MATRIX.md`](../backend/tests/TEST_MATRIX.md).
 
+### 8.1 Types of testing performed
+
+| Type | Level | Tool | What it proves |
+| :--- | :--- | :--- | :--- |
+| **Unit testing** | Pure functions | Node built-in test runner (`node --test`) | Slot-grid expansion, date validation, lifecycle state machine — no I/O, no database |
+| **Integration / E2E** | HTTP + database | Custom Node harness (`tests/e2e/api.e2e.js`) | Real routing, middleware, Prisma and PostgreSQL over live HTTP |
+| **Regression** | Concurrency | Two simultaneous requests for one slot | The partial unique index holds under a genuine race |
+| **Security testing** | RBAC / authz | Negative e2e cases `SEC-01 … SEC-17` | Unauthorised and cross-role access always returns 401/403/404 |
+| **Validation testing** | Boundary | express-validator chains | Malformed, out-of-range and past-date input is rejected uniformly |
+| **Build / smoke** | Production bundle | `vite build` + `/api/health` probe | The artefact compiles and the API boots cleanly |
+| **Continuous testing** | CI | GitHub Actions | All of the above on every push and pull request |
+
+### 8.2 Test cases and results
+
 | Suite | Command | Coverage | Result |
 | :--- | :--- | :--- | :--- |
 | Unit (offline) | `npm test` | Slot-grid maths, date validation, lifecycle state machine | **21 / 21 pass** |
@@ -542,36 +573,81 @@ The same suites run automatically in CI on every push
 
 ---
 
-## 9. Observations
+## 9. Observations & Discussion
 
-- **Concurrency is best solved at the database.** An application-level "is this
-  slot free?" check is necessary for a good error message, but it cannot prevent
-  a race on its own. The partial unique index makes the *database* the final
-  arbiter, so even two truly simultaneous requests resolve to one success and
-  one clean `409`. This was validated by an actual two-request race test, not
-  just reasoned about.
+### 9.1 Results achieved
 
-- **A single serializer contract prevents whole classes of bugs.** During the
-  MongoDB → PostgreSQL migration, the API moved from returning nested,
-  Mongoose-populated objects to returning **flat** DTOs. A few frontend read
-  sites still expected the old nested shape (e.g. `a.doctorId.consultationFee`
-  on what is now a bare id string), so the admin revenue KPI silently showed
-  `Rs. 0` and the doctor queue omitted patient age/gender/phone. The fix was to
-  enrich the one serializer with the flat fields and update the read sites —
-  reinforcing that the DTO contract must be defined in exactly one place.
+Every requirement in §5 is implemented and verified by an automated assertion, and
+the pipeline is green on `main`. The final measured state:
 
-- **Fail-open integrations keep the core deterministic.** Redis, Socket.IO, and
-  Nodemailer each degrade to a no-op fallback. This makes local development and
-  grading reproducible while still demonstrating production-shaped patterns.
+| Metric | Result |
+| :--- | :--- |
+| Automated assertions | **93 passing** (21 unit + 72 end-to-end) |
+| Modules delivered with full CRUD | 4 (Patients, Doctors & Schedules, Appointments, Consultation Records) |
+| UML / CASE artefacts | Use case, class, sequence, DFD L0–L2, ERD, architecture |
+| Role-separated dashboards | Patient, Doctor, Administrator |
+| CI status on `main` | Green — schema, seed, unit, e2e and production build all pass |
 
-- **Prisma cannot express everything — and that's fine.** The one constraint the
-  ORM could not model (a *partial* unique index) is created with a small raw-SQL
-  bootstrap during `db:setup`. Knowing where to step outside the ORM is itself a
-  design decision.
+**Screenshots** of every role journey (registration, booking, queue, ledger,
+consultation records, admin CRUD) are submitted as **Appendix A** of this report
+and are enumerated in [`screenshots/README.md`](../screenshots/README.md).
 
-- **Time-travel fixtures make time-based rules testable.** Rather than waiting
-  two hours or a day, tests insert or back-date rows directly through Prisma to
-  probe the cutoff and notes-window boundaries precisely.
+### 9.2 Challenges faced
+
+- **Concurrency vs. the slot model.** The first instinct was an application-level
+  "is this slot free?" query. That produces a friendly message but cannot survive a
+  genuine race — two requests can both read "free" before either writes. Solving it
+  properly required moving the invariant into the database as a *partial* unique
+  index, which Prisma's schema language cannot express, so a raw-SQL bootstrap step
+  was needed.
+- **A database migration under a live API.** Moving from MongoDB/Mongoose to
+  PostgreSQL/Prisma changed the response shape from nested, populated objects to
+  flat DTOs. Frontend read sites still expected the old nesting (e.g.
+  `a.doctorId.consultationFee` where `doctorId` is now a bare id), so the admin
+  revenue KPI silently rendered `Rs. 0` and the doctor queue lost patient
+  age/gender/phone. Nothing threw — it degraded quietly, which is the dangerous
+  failure mode.
+- **Time-based rules are hard to test honestly.** A 2-hour cancellation cutoff and a
+  24-hour notes window cannot be validated by waiting. The suite instead back-dates
+  rows through Prisma ("time travel") so the exact boundaries can be probed.
+- **A green local run that was red in CI.** The suite passed locally for months but
+  failed every CI run. The cause was a genuine runtime difference, not flakiness:
+  `node --test` only gained glob support in Node 21, while CI pins Node 20, which
+  treated the glob as a literal filename. Fixing it properly meant verifying the
+  runner behaviour against real Node 20 *and* Node 24 binaries rather than trusting
+  one environment.
+
+### 9.3 Insights
+
+- **Concurrency is best solved at the database.** The application check exists only
+  to produce a good error message; the partial unique index is what actually makes
+  the invariant true. Verified by a real two-request race, not by reasoning.
+- **A single serializer contract prevents whole classes of bugs.** Routing every
+  response through one `utils/serialize.js` is what made the migration bug
+  *findable* — there was exactly one place to fix. The contract must live in one
+  place or it will drift.
+- **Fail-open integrations keep the core deterministic.** Redis, Socket.IO and
+  Nodemailer each degrade to a no-op, so local setup and grading stay reproducible
+  while still demonstrating production-shaped patterns.
+- **Knowing when to leave the ORM is a design skill.** The one constraint Prisma
+  could not model was handled with a small, idempotent raw-SQL step rather than by
+  contorting the schema.
+- **CI is a different machine from your laptop.** The pipeline should be treated as
+  the source of truth; a feature is not finished until CI is green.
+
+### 9.4 Improvements for future work
+
+- **Online payment and insurance claims** tied to the `Completed` appointment state.
+- **Full-text search and faceted filtering** (specialisation, fee band, language,
+  rating) over a growing doctor directory.
+- **Push/email reminders** one day and one hour before an appointment, using the
+  existing fail-open mailer tier.
+- **Audit-log screens** for admin so record corrections and purges are reviewable
+  rather than only auditable in the database.
+- **Refresh-token sessions and role-level rate limiting** for a production threat
+  model.
+- **Containerisation** (`docker compose` for API, web and database) so a reviewer
+  can run the whole system with a single command.
 
 ---
 
@@ -599,6 +675,12 @@ end-to-end) wired into a CI pipeline.
   ownership checks — and verifying each with negative tests.
 - Maintaining a single serializer/DTO contract across a database migration, and
   the debugging discipline that surfaces when that contract drifts.
+- Using CASE notation (use case, class, sequence, DFD, ERD) *before* writing
+  code, so the models drove the schema and the API surface rather than
+  documenting them afterwards.
+- Learning that continuous integration is a genuine engineering tool: the
+  Node 20 vs Node 24 discrepancy proved that "works on my machine" is a
+  hypothesis to be tested, not a conclusion.
 
 ---
 

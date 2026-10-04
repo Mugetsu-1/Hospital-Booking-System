@@ -2,7 +2,6 @@ require('dotenv').config();
 
 module.exports = {
   port: process.env.PORT || 5000,
-  nodeEnv: process.env.NODE_ENV || 'development',
 
   // PostgreSQL connection string.
   // Example: postgresql://postgres:postgres@127.0.0.1:5432/hospital_booking?schema=public
