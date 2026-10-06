@@ -114,7 +114,7 @@ All tools listed here are actually used by the repository; nothing is aspiration
 | **Unit testing** | Node built-in test runner (`node --test`) | 21 offline unit tests (slot maths, transitions, dates) |
 | **E2E testing** | Custom Node HTTP harness (`tests/e2e/api.e2e.js`) | 72 end-to-end API assertions against PostgreSQL |
 | **Modeling / CASE** | Mermaid | Use-case, class, DFD (L0–L2), ERD, sequence diagrams |
-| **Version control** | Git + GitHub | Feature-branch iterative workflow, `main` kept deploy-free and always green |
+| **Version control** | Git + GitHub | Feature-branch iterative workflow; `main` kept always green |
 | **CI** | GitHub Actions | `.github/workflows/main.yml` — DB service, schema push, seed, unit + e2e tests, production build |
 | **Dev environment** | VS Code, npm, `nodemon` | Editing, scripts, hot-reload dev server |
 

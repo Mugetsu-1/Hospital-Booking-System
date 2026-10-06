@@ -31,3 +31,6 @@ docs/assets/
 # Final Word artifact is generated locally from docs/LAB_REPORT.md and is
 # intentionally not versioned. Submit the exported file separately if needed.
 docs/LAB_REPORT.docx
+
+# Local working note — full chat-session log, not part of the deliverable
+CHAT_SESSION.md
