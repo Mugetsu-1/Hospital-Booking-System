@@ -67,7 +67,6 @@ All 11 captured screens are listed in the
 
 | Document | Purpose |
 | :--- | :--- |
-| **[Project Summary](docs/PROJECT_SUMMARY.md)** | Lab-report-style narrative: abstract, SRS, modelling, database, architecture, implementation, QA, conclusion |
 | **[Diagrams](docs/README.md)** | Use Case · DFD L0–L2 · ERD · Sequence · Architecture (Mermaid) |
 | **[Test Matrix](backend/tests/TEST_MATRIX.md)** | Black-box matrix, equivalence partitioning, BVA, RBAC cases |
 | **[Screenshot checklist](screenshots/README.md)** | 24 named UI captures for the report |
@@ -255,7 +254,7 @@ docs/
   LAB_REPORT.md/.docx     the lab report (source of truth + generated Word file)
   use-case · class-diagram · sequence-diagrams
   dfd-context · dfd-level1 · dfd-level2-booking · erd · architecture
-  PROJECT_SUMMARY.md      technical summary
+  architecture-overview.webp  component / data-flow overview (README)
   build-docx.mjs          renders Mermaid → PNG → .docx
   capture-screenshots.mjs headless-Chromium capture for Appendix A
 screenshots/               UI evidence PNGs (report Appendix A)

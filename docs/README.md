@@ -15,7 +15,6 @@ same Mermaid source to high-resolution PNG/SVG for a printed report.
 | Sequence | [`sequence-diagrams.md`](./sequence-diagrams.md) | Client → Controller → Cache/Database → Client messaging |
 | Architecture | [`architecture.md`](./architecture.md) | React + Express + PostgreSQL (Prisma) + optional Redis/Socket.IO/SMTP |
 | Lab Report (ACHS) | [`LAB_REPORT.md`](./LAB_REPORT.md) | Consolidated 10-section software-engineering lab report |
-| Project Summary | [`PROJECT_SUMMARY.md`](./PROJECT_SUMMARY.md) | Full lab-report-style narrative for the project |
 
 ## Relationship to the codebase
 
