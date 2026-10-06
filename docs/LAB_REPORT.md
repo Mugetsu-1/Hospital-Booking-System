@@ -235,7 +235,7 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 
 ## 6. Design & System Modeling
 
-The design is captured as Mermaid models. The three most central diagrams are
+The design is captured as Mermaid models. The most central diagrams are
 embedded inline below; the data-flow, entity-relationship, and architecture
 models are linked from [`docs/README.md`](./README.md).
 
@@ -433,7 +433,110 @@ sequenceDiagram
 | ERD | [`erd.md`](./erd.md) | `users`, `doctors`, `appointments` + partial unique index |
 | Architecture | [`architecture.md`](./architecture.md) | React + Express + PostgreSQL + optional tiers |
 
-### 6.5 Database Design
+### 6.5 Component Architecture
+
+A component-level view of the running system: the browser SPA with its realtime
+and HTTP clients, the Express API with JWT/RBAC-guarded route groups, the
+controller and domain services, and the persistence & integration tier. It
+complements the layered view in [`architecture.md`](./architecture.md) by naming
+the actual modules and the calls between them.
+
+```mermaid
+flowchart TB
+  Doctor([Doctor])
+  Admin([Administrator])
+  Patient([Patient])
+
+  subgraph web["Web application — React SPA"]
+    App["Role-based screens (App.jsx)"]
+    AuthCtx["Sign-in & registration (AuthContext.jsx)"]
+    Browse["Doctor search (BrowseDoctors.jsx)"]
+    MyAppts["Appointment history (MyAppointments.jsx)"]
+    Queue["Doctor queue (DoctorDashboard.jsx)"]
+    Ledger["Admin ledger (AdminDashboard.jsx)"]
+    RTClient["Realtime client (realtime.js)"]
+    HTTP["HTTP API client (client.js)"]
+  end
+
+  subgraph api["API & access — Express"]
+    Express["Express API (app.js)"]
+    ApptR["Appointment routes (appointmentRoutes.js)"]
+    DocR["Doctor routes (doctorRoutes.js)"]
+    AuthR["Authentication routes (authRoutes.js)"]
+    PatR["Patient routes (patientRoutes.js)"]
+    RBAC["JWT & RBAC (auth.js)"]
+  end
+
+  subgraph identity["Directory & identity"]
+    DocDir["Doctor directory & slots (doctorController.js)"]
+    AcctOps["Account operations (authController.js)"]
+    PatProf["Patient profiles (patientController.js)"]
+  end
+
+  subgraph appops["Appointment operations"]
+    Booking["Booking & visit rules (appointmentController.js)"]
+    ApptStates["Appointment states (appointment.js)"]
+    Slots["Slot computation (slots.js)"]
+  end
+
+  subgraph persist["Persistence & integrations"]
+    Mail["Email notifications (mailer.js)"]
+    Socket["Socket.IO service (services/realtime.js)"]
+    Redis["Redis cache (cache.js)"]
+    Prisma["Prisma data access (db.js)"]
+    PG[("PostgreSQL")]
+  end
+
+  Doctor --> App
+  Admin --> App
+  Patient --> App
+
+  App --> AuthCtx
+  App --> Browse
+  App --> MyAppts
+  App --> Queue
+  App --> Ledger
+  AuthCtx --> RTClient
+  AuthCtx --> HTTP
+  Browse --> HTTP
+  MyAppts --> HTTP
+  Queue --> HTTP
+  Ledger --> HTTP
+
+  HTTP -->|"REST /api"| Express
+  RTClient -.->|"WS /socket.io"| Socket
+
+  Express --> ApptR
+  Express --> DocR
+  Express --> AuthR
+  Express --> PatR
+  ApptR --> RBAC
+  DocR --> RBAC
+  AuthR --> RBAC
+  PatR --> RBAC
+
+  ApptR --> Booking
+  DocR --> DocDir
+  AuthR --> AcctOps
+  PatR --> PatProf
+
+  Booking --> ApptStates
+  Booking --> Slots
+  DocDir --> Slots
+
+  DocDir -.-> Redis
+  DocDir -.-> Socket
+  Booking -.-> Socket
+  Booking -.-> Redis
+  Booking -.-> Mail
+  Booking --> Prisma
+  DocDir --> Prisma
+  AcctOps --> Prisma
+  PatProf --> Prisma
+  Prisma --> PG
+```
+
+### 6.6 Database Design
 
 Three PostgreSQL tables, defined once in
 [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma):
