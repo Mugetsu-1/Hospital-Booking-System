@@ -30,6 +30,17 @@
 > locally with `npm run build:docx` in `docs/` and is intentionally not
 > versioned — export it with your Submission Date when you submit.
 
+## Architecture overview
+
+![System architecture — components and data flow](docs/architecture-overview.webp)
+
+Auto-generated from the codebase ([gitdiagram](https://gitdiagram.com/mugetsu-1/hospital-booking-system)):
+the React SPA with its realtime and HTTP clients, the Express API with JWT/RBAC-guarded
+routes, the domain services (doctor directory & slots, booking/visit rules, slot computation,
+appointment-status state machine), and the persistence/integration tier (Prisma → PostgreSQL,
+plus the optional Redis cache, Socket.IO and Nodemailer). The layered Mermaid view lives in
+[`docs/architecture.md`](docs/architecture.md).
+
 ## Screenshots
 
 | Register | Login |
