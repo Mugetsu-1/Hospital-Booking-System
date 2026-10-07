@@ -14,9 +14,13 @@
 
 <div align="center">
 
-**ACADEMY OF CLINICAL & HEALTH SCIENCES (ACHS)**
+**TRIBHUVAN UNIVERSITY**
 
-**Software Engineering Lab**
+**Faculty of Science and Technology**
+
+**Asian College of Higher Studies (ACHS)**
+
+Ekantakuna, Jawlakhel
 
 ---
 
@@ -25,11 +29,17 @@
 
 ---
 
+A lab report submitted in partial fulfillment of the requirements for the
+**Software Engineering** course of the Bachelor of Science in Computer Science
+and Information Technology (B.Sc.CSIT).
+
+---
+
 | | |
 | :--- | :--- |
 | **Student Name** | Saugat Bikram Thapa |
 | **Roll No.** | 80117731 |
-| **Course** | BSc.CSIT |
+| **Programme** | B.Sc.CSIT |
 | **Subject** | Software Engineering |
 | **Instructor** | Saroja Bhandari |
 | **Submission Date** |  |
