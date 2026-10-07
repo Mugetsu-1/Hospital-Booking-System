@@ -93,23 +93,17 @@ let bodyHtml = marked.parse(md, { gfm: true });
 // Inline each rendered diagram as a sized base64 image.
 bodyHtml = bodyHtml.replace(/<img[^>]*\ssrc="([^"]+)"[^>]*>/g, (whole, src) => {
   if (src.startsWith('data:')) return whole;
-  const candidate = existsSync(join(ASSETS_DIR, src)) ? join(ASSETS_DIR, src) : (existsSync(src) ? src : null);
+  // Resolve against the rendered-diagram dir, the report's own dir (so
+  // markdown-relative paths like ../screenshots/*.png work regardless of cwd),
+  // then the raw path. First match wins.
+  const candidate = [join(ASSETS_DIR, src), join(DOCS_DIR, src), src].find(existsSync) || null;
   return candidate ? imgTag(candidate, DIAGRAM_MAX_W) : whole;
 });
 
-// --- 3. Optional screenshots appendix --------------------------------------
-let appendix = '';
-if (existsSync(SHOTS_DIR)) {
-  const shots = readdirSync(SHOTS_DIR).filter((f) => /\.png$/i.test(f)).sort();
-  if (shots.length) {
-    appendix += '<h2>Appendix A &mdash; Application Screenshots</h2>';
-    for (const shot of shots) {
-      const caption = basename(shot).replace(/\.png$/i, '').replace(/[-_]+/g, ' ');
-      appendix += `<p><strong>${caption}</strong></p>${imgTag(join(SHOTS_DIR, shot), SHOT_MAX_W)}`;
-    }
-    console.log(`→ Added ${shots.length} screenshot(s) as Appendix A.`);
-  }
-}
+// --- 3. Screenshots ---------------------------------------------------------
+// Screenshots are embedded inline in the report body (resolved above via
+// DOCS_DIR — e.g. ../screenshots/*.png), so no separate appendix is appended.
+const appendix = '';
 
 // --- 4. HTML -> .docx ------------------------------------------------------
 const css = `

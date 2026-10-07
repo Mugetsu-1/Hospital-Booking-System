@@ -1,8 +1,9 @@
 <!--
-  ACHS Software Engineering Lab — Consolidated Lab Report.
-  Cover-page details are filled in; Submission Date is intentionally left
-  blank for the student to complete at submission time.
-  Every Mermaid block renders automatically on GitHub and in the exported .docx.
+  ACHS Software Engineering Lab — Consolidated Lab Report (self-contained).
+  All diagrams are inline Mermaid (rendered on GitHub and rasterised to PNG for
+  the Word export by build-docx.mjs). Screenshots are embedded in context from
+  ../screenshots. Cover-page details are filled in; Submission Date is left blank
+  for the student to complete at submission time.
 -->
 
 # Hospital Doctor Appointment Booking System
@@ -49,6 +50,113 @@ and Information Technology (B.Sc.CSIT).
 
 ---
 
+## Abstract
+
+The **Hospital Doctor Appointment Booking System** is a full-stack web
+application that lets patients discover doctors and book *computed* availability
+slots, doctors run day/week/month consultation queues and record governed
+medical notes, and administrators manage the doctor directory, patient accounts
+and the hospital-wide appointment ledger. It is built as a React 18 (Vite)
+single-page application over a layered Express REST API, with PostgreSQL and
+Prisma 7 as the relational store. The design centres on a concurrency-safe slot
+model — a *partial unique index* that makes double-booking impossible even under
+a genuine two-request race — together with JWT authentication, role-based access
+control, and server-side request validation. An optional Redis cache, Socket.IO
+realtime tier and Nodemailer notifier are *fail-open*, so the system runs
+identically with or without them. The project was engineered across the full
+software-engineering lifecycle — requirement capture, UML/DFD/ERD modelling,
+layered implementation, and automated verification — and ships with **93 passing
+automated assertions** (21 unit + 72 end-to-end) wired into a GitHub Actions
+continuous-integration pipeline.
+
+**Keywords:** Appointment Booking, PostgreSQL, Prisma, JWT, RBAC, Concurrency
+Control, Partial Unique Index, REST API, CRUD, Automated Testing, CI/CD.
+
+---
+
+## Table of Contents
+
+1. [Cover Page](#1-cover-page)
+2. [Introduction](#2-introduction)
+3. [Objective](#3-objective)
+4. [Tools Used](#4-tools-used)
+5. [Requirements](#5-requirements)
+6. [Design & System Modeling](#6-design--system-modeling)
+7. [Implementation](#7-implementation)
+8. [Testing](#8-testing)
+9. [Observations & Discussion](#9-observations--discussion)
+10. [Conclusion](#10-conclusion)
+- [References](#references)
+
+---
+
+## List of Abbreviations
+
+| Abbreviation | Full form |
+| :--- | :--- |
+| API | Application Programming Interface |
+| BVA | Boundary-Value Analysis |
+| CI/CD | Continuous Integration / Continuous Delivery |
+| CRUD | Create, Read, Update, Delete |
+| DFD | Data-Flow Diagram |
+| DTO | Data Transfer Object |
+| ERD | Entity-Relationship Diagram |
+| HTTP | HyperText Transfer Protocol |
+| JSON | JavaScript Object Notation |
+| JWT | JSON Web Token |
+| NFR | Non-Functional Requirement |
+| ORM | Object-Relational Mapping |
+| PII | Personally Identifiable Information |
+| RBAC | Role-Based Access Control |
+| REST | Representational State Transfer |
+| SPA | Single-Page Application |
+| SQL | Structured Query Language |
+| SMTP | Simple Mail Transfer Protocol |
+| TTL | Time To Live |
+| UML | Unified Modeling Language |
+| UUID | Universally Unique Identifier |
+
+---
+
+## List of Figures
+
+| Figure | Title | Section |
+| :--- | :--- | :--- |
+| Figure 1 | Patient registration | §5.3 |
+| Figure 2 | Sign-in (login) | §5.3 |
+| Figure 3 | Patient profile | §5.3 |
+| Figure 4 | Doctor directory (search & filter) | §5.3 |
+| Figure 5 | Administrator — doctor management | §5.3 |
+| Figure 6 | Slot picker / booking | §5.3 |
+| Figure 7 | Appointment history | §5.3 |
+| Figure 8 | Doctor day queue | §5.3 |
+| Figure 9 | Use Case Diagram | §6.1 |
+| Figure 10 | Class Diagram | §6.2 |
+| Figure 11 | Sequence Diagram — Book an Appointment | §6.3 |
+| Figure 12 | DFD Level 0 (Context) | §6.4 |
+| Figure 13 | DFD Level 1 | §6.4 |
+| Figure 14 | DFD Level 2 — Booking Engine | §6.4 |
+| Figure 15 | Entity-Relationship Diagram | §6.5 |
+| Figure 16 | Component Architecture | §6.6 |
+| Figure 17 | Layered Architecture | §7.1 |
+| Figure 18 | Administrator overview dashboard | §9.1 |
+| Figure 19 | Administrator — patient accounts | §9.1 |
+| Figure 20 | Administrator — appointment ledger | §9.1 |
+
+---
+
+## List of Tables
+
+| Table | Title | Section |
+| :--- | :--- | :--- |
+| Table 1 | Tools and Technologies Used | §4 |
+| Table 2 | Non-Functional Requirements | §5.4 |
+| Table 3 | Database Tables | §6.7 |
+| Table 4 | Types of Testing Performed | §8.1 |
+| Table 5 | Test Cases and Results | §8.2 |
+
+---
+
 ## 2. Introduction
 
 Hospital appointment books are surprisingly easy to corrupt: two patients can be
@@ -78,6 +186,20 @@ pipeline.
 This report documents the system across the full software-engineering
 lifecycle, following the ACHS lab structure.
 
+### 2.1 Scope and Limitations
+
+**In scope.** Full CRUD across four modules (Patients; Doctors & Schedules;
+Appointments; Consultation Records); JWT authentication and role-based access
+control for three roles; computed appointment slots with concurrency-safe
+booking; a documented appointment lifecycle with cancellation and notes-edit
+windows; and automated unit + end-to-end testing in CI.
+
+**Out of scope / limitations.** The system does not process real online payments
+or insurance claims; it has no SMS gateway (e-mail notifications are optional and
+fail-open); the directory search is attribute-based rather than full-text; and
+the deployment target is a locally run PostgreSQL instance rather than a hosted
+production cluster. These are revisited as future work in §9.4.
+
 ---
 
 ## 3. Objective
@@ -106,6 +228,8 @@ The objectives of the project are to:
 
 All tools listed here are actually used by the repository; nothing is aspirational.
 
+**Table 1 — Tools and Technologies Used.**
+
 | Category | Tool / Technology | Role in the project |
 | :--- | :--- | :--- |
 | **Project management** | GitHub Issues + GitHub Projects | Requirement breakdown into six capability epics, sprint-sized task lists, and per-task acceptance criteria |
@@ -123,25 +247,26 @@ All tools listed here are actually used by the repository; nothing is aspiration
 | **Optional e-mail** | Nodemailer | Booking / status HTML notifications (fail-open) |
 | **Unit testing** | Node built-in test runner (`node --test`) | 21 offline unit tests (slot maths, transitions, dates) |
 | **E2E testing** | Custom Node HTTP harness (`tests/e2e/api.e2e.js`) | 72 end-to-end API assertions against PostgreSQL |
-| **Modeling / CASE** | Mermaid | Use-case, class, DFD (L0–L2), ERD, sequence diagrams |
+| **Modeling / CASE** | Mermaid | Use-case, class, DFD (L0–L2), ERD, sequence, architecture diagrams |
 | **Version control** | Git + GitHub | Feature-branch iterative workflow; `main` kept always green |
 | **CI** | GitHub Actions | `.github/workflows/main.yml` — DB service, schema push, seed, unit + e2e tests, production build |
 | **Dev environment** | VS Code, npm, `nodemon` | Editing, scripts, hot-reload dev server |
 
 ### 4.1 CASE tools
 
-All models are authored in **Mermaid** inside `docs/` and rendered automatically by
-GitHub; [`docs/build-docx.mjs`](./build-docx.mjs) rasterises the same sources to PNG
-via `mermaid-cli` for the submitted Word document, so the report and the diagrams
-can never drift apart.
+All models are authored in **Mermaid** and embedded **inline in Section 6**, so
+they render automatically on GitHub and are rasterised to PNG for the submitted
+Word document by [`build-docx.mjs`](./build-docx.mjs) — the report and its
+diagrams can never drift apart.
 
-| Artefact | Source | Type |
+| Artefact | Where | Type |
 | :--- | :--- | :--- |
-| Use-case model | [`use-case.md`](./use-case.md) | UML use case (actors, `«include»` relations) |
-| Object model | [`class-diagram.md`](./class-diagram.md) | UML class diagram + domain service |
-| Behaviour | [`sequence-diagrams.md`](./sequence-diagrams.md) | UML sequence (book / confirm / cancel / notes) |
-| Data flow | [`dfd-context.md`](./dfd-context.md), [`dfd-level1.md`](./dfd-level1.md), [`dfd-level2-booking.md`](./dfd-level2-booking.md) | Gane–Sarson DFD L0, L1, L2 |
-| Data model | [`erd.md`](./erd.md) | ERD with cardinality and the partial unique index |
+| Use-case model | §6.1 | UML use case (actors, `«include»` relations) |
+| Object model | §6.2 | UML class diagram + domain service |
+| Behaviour | §6.3 | UML sequence (book flow) |
+| Data flow | §6.4 | Gane–Sarson DFD L0, L1, L2 |
+| Data model | §6.5 | ERD with cardinality and the partial unique index |
+| Architecture | §6.6, §7.1 | Component view + layered view |
 
 ### 4.2 Development process
 
@@ -203,6 +328,18 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | Update | Edit contact info, address, emergency contact | `PATCH /api/patients/:id` |
 | Delete | Soft-delete / deactivate account (records preserved) | `DELETE /api/patients/:id` (admin) |
 
+![Patient registration](../screenshots/01-register.png)
+
+**Figure 1 — Patient registration:** form validation, success toast, and redirect to the appointments page.
+
+![Sign-in](../screenshots/02-login.png)
+
+**Figure 2 — Sign-in:** JWT login with a signed-in toast and role-based redirect.
+
+![Patient profile](../screenshots/10-profile.png)
+
+**Figure 3 — Patient profile:** editing contact details with a saved-changes toast.
+
 **Module B — Doctor & Schedule Management**
 
 | CRUD | Requirement | Endpoint |
@@ -212,6 +349,14 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | Update | Doctor edits own hours, fee, availability; admin edits names | `PATCH /api/doctors/:id` |
 | Delete | Admin deactivates / reactivates (soft delete) | `PATCH /api/doctors/:id/status` |
 
+![Doctor directory](../screenshots/03-browse-doctors.png)
+
+**Figure 4 — Doctor directory:** search and filter by name, specialisation, weekday and fee, with schedule chips.
+
+![Administrator doctor management](../screenshots/17-admin-doctors.png)
+
+**Figure 5 — Administrator, doctor management:** create / edit / deactivate controls over the directory.
+
 **Module C — Appointment Booking Lifecycle**
 
 | CRUD | Requirement | Endpoint |
@@ -220,6 +365,18 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | Read | Patient history; doctor day/week/month queue; admin ledger | `GET /api/appointments/my` · `/doctor` · `/appointments` |
 | Update | Patient reschedules (→ Pending); doctor/admin drive lifecycle | `POST /:id/reschedule`, `PATCH /:id/status` |
 | Delete | Cancel (releases slot); admin purges permanently | `POST /:id/cancel`, `DELETE /:id` |
+
+![Slot picker](../screenshots/04-slot-picker.png)
+
+**Figure 6 — Slot picker:** a computed slot grid from the doctor's weekly blocks; booked times are not offered.
+
+![Appointment history](../screenshots/08-appointment-history.png)
+
+**Figure 7 — Appointment history:** status tabs (All / Pending / Confirmed / Completed / Cancelled) and date filters.
+
+![Doctor day queue](../screenshots/11-doctor-queue-day.png)
+
+**Figure 8 — Doctor day queue:** pending/confirmed rows with patient age / gender / phone and status actions.
 
 **Module D — Consultation & Medical Notes**
 
@@ -231,6 +388,8 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | Delete | Admin purges duplicate / misfiled entries | `DELETE /:id` |
 
 ### 5.4 Non-Functional Requirements
+
+**Table 2 — Non-Functional Requirements.**
 
 | NFR | Requirement | Evidence |
 | :--- | :--- | :--- |
@@ -245,14 +404,13 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 
 ## 6. Design & System Modeling
 
-The design is captured as Mermaid models. The most central diagrams are
-embedded inline below; the data-flow, entity-relationship, and architecture
-models are linked from [`docs/README.md`](./README.md).
+The design is captured as Mermaid models, embedded inline below. Sections 6.1–6.3
+are the central UML views (use case, class, sequence); 6.4–6.6 add the data-flow,
+entity-relationship, and architecture models; 6.7 details the database design.
 
 ### 6.1 Use Case Diagram
 
-Actor boundaries for Patient, Doctor, and Administrator
-([source](./use-case.md)).
+Actor boundaries for Patient, Doctor, and Administrator.
 
 ```mermaid
 flowchart TD
@@ -302,10 +460,12 @@ flowchart TD
   UC9 -.->|"«include»"| UC8
 ```
 
+**Figure 9 — Use Case Diagram:** actor boundaries for Patient, Doctor and Administrator, with `«include»` relations.
+
 ### 6.2 Class Diagram
 
 The object model — entities, the `SlotBlock` value object, enumerations, and the
-`AppointmentPolicy` domain service ([full notes](./class-diagram.md)).
+`AppointmentPolicy` domain service.
 
 ```mermaid
 classDiagram
@@ -398,12 +558,14 @@ classDiagram
     Appointment ..> ApptStatus
 ```
 
+**Figure 10 — Class Diagram:** the domain object model, the `SlotBlock` value object, the enumerations, and the `AppointmentPolicy` service.
+
 ### 6.3 Sequence Diagram — Book an Appointment
 
 The booking flow, showing validation, the free-slot check, the unique-index
-guard, cache invalidation, and realtime/e-mail side effects. The remaining
-flows (confirm/complete, cancel/reschedule, notes) are in
-[`sequence-diagrams.md`](./sequence-diagrams.md).
+guard, cache invalidation, and realtime/e-mail side effects. The remaining flows
+(confirm/complete, cancel/reschedule, notes) follow the same request → validate →
+persist → invalidate → notify pattern.
 
 ```mermaid
 sequenceDiagram
@@ -433,23 +595,245 @@ sequenceDiagram
   C-->>P: 201 {data: appointment serialized}
 ```
 
-### 6.4 Supporting Models
+**Figure 11 — Sequence Diagram (Book an Appointment):** validation, the free-slot check, the unique-index guard, cache invalidation and fail-open side effects.
 
-| Model | File | What it shows |
+### 6.4 Data-Flow Diagrams
+
+**DFD Level 0 (Context).** The booking engine is a single process; external
+actors exchange data with it across the REST/WebSocket boundary, and the engine
+owns the database and the optional cache.
+
+```mermaid
+flowchart LR
+  P["Patient"]
+  D["Doctor"]
+  A["Administrator"]
+
+  subgraph engine["Booking Engine (process 0)"]
+    API["HTTP REST + Socket.IO\n(routes / controllers / middleware)"]
+  end
+
+  subgraph store["Data store"]
+    DB[("PostgreSQL\nusers · doctors · appointments")]
+  end
+
+  P -->|"1  credentials, profile,\nbooking request"| API
+  API -->|"2  directory, slots,\nconfirmation, records"| P
+  D -->|"3  schedule, status\nupdates, notes"| API
+  API -->|"4  queue, records"| D
+  A -->|"5  directory & account\nmanagement commands"| API
+  API -->|"6  ledger, reports"| A
+
+  API -->|"7  SQL read/write (Prisma)"| DB
+  DB -->|"8  query results"| API
+
+  API -.->|"9  cache slots & directory\n(optional Redis)"| C[(Redis)]
+  C -.->|"10  cached reads"| API
+```
+
+**Figure 12 — DFD Level 0 (Context):** every flow crosses authentication and validation middleware before touching the data store.
+
+**DFD Level 1.** The engine decomposes into four processes; dashed arrows are the
+optional cache, realtime push, and e-mail side effects.
+
+```mermaid
+flowchart LR
+  P["Patient"]
+  D["Doctor"]
+  A["Administrator"]
+
+  subgraph zero["1.0 Auth"]
+    L1["register / login /\nJWT verify"]
+  end
+  subgraph two["2.0 Doctor Schedule Management"]
+    L2["weekly blocks, fee,\navailability"]
+  end
+  subgraph three["3.0 Booking Engine"]
+    L3["slot grid computation\n· collision check ·\nstatus lifecycle"]
+  end
+  subgraph four["4.0 Medical Records"]
+    L4["consultation notes,\ndiagnosis, prescription"]
+  end
+
+  DB[("Users · Doctors ·\nAppointments")]
+  C[(Redis·optional)]
+  RT["Socket.IO bus"]
+  MX["Mailer (SMTP, optional)"]
+
+  P -->|credentials| L1
+  L1 -->|token / session| P
+
+  P -->|"search / filter"| L2
+  L2 -->|directory| P
+  D -->|"edit schedule / leave"| L2
+  A -->|"create / deactivate"| L2
+
+  P -->|"book / reschedule / cancel"| L3
+  D -->|"confirm / complete"| L3
+  A -->|"ledger / purge"| L3
+  L3 -->|"fresh slots / status"| P
+  L3 -->|"queue / requests"| D
+  L3 -->|"ledger"| A
+
+  D -->|"diagnosis · prescription · notes"| L4
+  L4 -->|"consultation record"| P
+  A -->|"correct / purge records"| L4
+
+  L1 <-->|"read / write users"| DB
+  L2 <-->|"read / write doctors"| DB
+  L3 <-->|"read / write appointments"| DB
+  L4 <-->|"read / write appointments"| DB
+
+  L2 -.->|"cache directory"| C
+  L3 -.->|"cache slot grids"| C
+  L3 -.->|"slots:changed / appointment:*"| RT
+  L4 -.->|"record ready"| RT
+  L3 -.->|"confirmations / cancellations"| MX
+  L4 -.->|"record available"| MX
+```
+
+**Figure 13 — DFD Level 1:** Auth (1.0), Doctor Schedule (2.0), Booking Engine (3.0) and Medical Records (4.0), each reading and writing PostgreSQL through Prisma.
+
+**DFD Level 2 (Booking Engine, process 3.0).** The sub-process that actually
+prevents double-booking: validate → check availability → persist → notify.
+
+```mermaid
+flowchart LR
+  P["Patient"]
+  D["Doctor"]
+
+  subgraph eng["3.0 Booking Engine"]
+    subgraph a["3.1 Validate request"]
+      V1["schema + dates\n(express-validator)"]
+      V2["doctor active & available?"]
+      V3["slot on weekly grid?\n(isEligibleStart)"]
+      V4["future slot?\n(no past start times)"]
+    end
+    subgraph b["3.2 Check availability"]
+      C1["live bookings for\ndoctor + date"]
+      C2["slot free?"]
+      C3["atomic unique index\n(partial on Pending/Confirmed)"]
+    end
+    subgraph c["3.3 Persist"]
+      S1["create appointment\n(status = Pending)"]
+    end
+    subgraph d["3.4 Notify & cache"]
+      N1["invalidate Redis slots key"]
+      N2["publish slots:changed / appointment:created"]
+      N3["e-mail booking request (optional)"]
+    end
+  end
+
+  DB[("appointments\n(partial unique index:\ndoctor_id+date+start_time)")]
+  C[(Redis·optional)]
+  RT["Socket.IO"]
+  MX["Mailer (optional)"]
+
+  P -->|"doctorId, date, time, symptoms"| V1
+  V1 --> V2
+  V2 -->|"reject 404/400"| P
+  V2 --> V3
+  V3 -->|"reject 400 off-grid"| P
+  V3 --> V4
+  V4 -->|"reject 400 past slot"| P
+  V4 --> C1
+  C1 --> C2
+  C2 -->|"409 already booked"| P
+  C2 -->|"free"| C3
+  C3 --> S1
+  S1 --> DB
+  DB -->|"saved"| S1
+  S1 --> N1
+  N1 -.-> C
+  S1 --> N2
+  N2 -.-> RT
+  N2 -.-> D
+  N2 -.-> P
+  S1 --> N3
+  N3 -.-> MX
+  S1 -->|"201 created + serialized"| P
+```
+
+**Figure 14 — DFD Level 2 (Booking Engine):** the application check rejects a taken slot with `409`, and the partial unique index is the atomic backstop that makes the invariant true under a race.
+
+### 6.5 Entity-Relationship Diagram
+
+One `users` row per person; doctors have a linked `doctors` profile; every
+appointment links a patient (`users`) to a doctor (`doctors`) through real
+foreign keys.
+
+```mermaid
+erDiagram
+  USERS ||--o{ APPOINTMENTS : "books as patient_id"
+  DOCTORS ||--o{ APPOINTMENTS : "is scheduled as doctor_id"
+  USERS ||--o| DOCTORS : "linked user_id"
+
+  USERS {
+    string id PK "uuid"
+    string name "trimmed"
+    string email UK "unique, lowercased"
+    string password_hash "bcrypt, never serialised"
+    string role "patient|doctor|admin (enum)"
+    int age "nullable"
+    string gender
+    string phone
+    string address
+    string emergency_contact
+    bool is_active "soft delete flag"
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  DOCTORS {
+    string id PK "uuid"
+    string user_id FK,UK "-> users.id, cascade"
+    string specialization
+    string qualification
+    float consultation_fee ">= 0"
+    jsonb available_slots "daily blocks {day,startTime,endTime,slotDurationMins}"
+    bool is_available "leave flag"
+    bool is_active "soft delete flag"
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  APPOINTMENTS {
+    string id PK "uuid"
+    string patient_id FK "-> users.id, cascade"
+    string doctor_id FK "-> doctors.id, cascade"
+    string date "YYYY-MM-DD"
+    string start_time "HH:MM"
+    string end_time "HH:MM"
+    timestamp date_time "chronological ordering"
+    string status "Pending|Confirmed|Completed|Cancelled (enum)"
+    string symptoms
+    string diagnosis
+    string prescription
+    string consultation_notes
+    timestamp notes_last_edited_at "nullable"
+    string cancelled_by "patient|doctor|admin"
+    timestamp created_at
+    timestamp updated_at
+    index uk_live_slot "UNIQUE(doctor_id,date,start_time) WHERE status IN (Pending,Confirmed)"
+  }
+```
+
+**Figure 15 — Entity-Relationship Diagram:** `users`, `doctors`, `appointments` with cardinality, foreign keys/cascades, and the partial unique slot index.
+
+| Relationship | Cardinality | Notes |
 | :--- | :--- | :--- |
-| DFD Level 0 (Context) | [`dfd-context.md`](./dfd-context.md) | Actors ↔ booking engine data flows |
-| DFD Level 1 | [`dfd-level1.md`](./dfd-level1.md) | Auth / Schedule / Booking / Records processes |
-| DFD Level 2 (Booking) | [`dfd-level2-booking.md`](./dfd-level2-booking.md) | Atomic slot validation + persistence |
-| ERD | [`erd.md`](./erd.md) | `users`, `doctors`, `appointments` + partial unique index |
-| Architecture | [`architecture.md`](./architecture.md) | React + Express + PostgreSQL + optional tiers |
+| `users` ⟶ `doctors` | 1 : 0..1 | `doctors.user_id` is UNIQUE; a doctor account owns one profile |
+| `users` (patient) ⟶ `appointments` | 1 : 0..N | `appointments.patient_id` FK → `users.id` (`ON DELETE CASCADE`) |
+| `doctors` ⟶ `appointments` | 1 : 0..N | `appointments.doctor_id` FK → `doctors.id` (`ON DELETE CASCADE`) |
+| Slot uniqueness | live appointments only | Cancelled/Completed rows fall outside the partial index → slot released |
 
-### 6.5 Component Architecture
+### 6.6 Component Architecture
 
 A component-level view of the running system: the browser SPA with its realtime
 and HTTP clients, the Express API with JWT/RBAC-guarded route groups, the
 controller and domain services, and the persistence & integration tier. It
-complements the layered view in [`architecture.md`](./architecture.md) by naming
-the actual modules and the calls between them.
+complements the layered view in §7.1 by naming the actual modules and the calls
+between them.
 
 ```mermaid
 flowchart TB
@@ -546,10 +930,14 @@ flowchart TB
   Prisma --> PG
 ```
 
-### 6.6 Database Design
+**Figure 16 — Component Architecture:** modules and the calls between them, from the SPA through the guarded API to the persistence & integration tier.
+
+### 6.7 Database Design
 
 Three PostgreSQL tables, defined once in
 [`backend/prisma/schema.prisma`](../backend/prisma/schema.prisma):
+
+**Table 3 — Database Tables.**
 
 | Table | Purpose | Key columns |
 | :--- | :--- | :--- |
@@ -563,7 +951,13 @@ an appointment therefore releases its slot automatically, and two simultaneous
 requests for the same slot can never both succeed — the second receives a
 unique-violation `409` (Prisma error `P2002`). Because Prisma cannot express a
 partial index in its schema language, the index is created idempotently by
-`backend/scripts/db-setup.js` during `npm run db:setup`.
+`backend/scripts/db-setup.js` during `npm run db:setup`:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS appointments_live_slot_unique
+ON appointments (doctor_id, date, start_time)
+WHERE status IN ('Pending', 'Confirmed');
+```
 
 ---
 
@@ -578,6 +972,47 @@ testable:
 Request → Route → Auth/RBAC → Validation → Controller → Domain / Prisma → PostgreSQL
                                                      ↘ Serializer → JSON response
 ```
+
+```mermaid
+flowchart TB
+  subgraph presentation["Presentation Layer"]
+    FE["React 18 SPA (Vite)\npages/ · components/ · context/ · api/"]
+    UI["UI feedback:\nToastProvider · skeleton loaders · modal confirmations"]
+    RT["realtime.js (Socket.IO client)"]
+  end
+
+  subgraph api["API Layer (Node.js + Express 4)"]
+    R["routes/  (REST under /api)"]
+    MW["middleware/\nJWT auth · RBAC · express-validator · error handler"]
+    C["controllers/\nauth · patients · doctors · appointments"]
+    U["utils/  slot grid · date helpers · serializers · errors"]
+    S["services/\nrealtime.js · mailer.js"]
+  end
+
+  subgraph data["Data Layer"]
+    DB[(PostgreSQL\nusers · doctors · appointments)]
+    PRISMA["db.js\nPrisma 7 + @prisma/adapter-pg"]
+    CACHE[(Redis · optional\nslot grids · directory)]
+  end
+
+  EMAIL["SMTP provider · optional"]
+
+  FE -->|"HTTP REST /api + WS /socket.io"| MW
+  RT -.->|"Socket.IO events"| S
+  MW --> R
+  R --> C
+  C --> U
+  C --> PRISMA
+  PRISMA -->|"SQL over pg pool"| DB
+  C -.->|"read-through cache"| CACHE
+  C -.->|"publish events"| S
+  S -.->|"events broadcast"| RT
+  S -.->|"emails"| EMAIL
+```
+
+**Figure 17 — Layered Architecture:** presentation, API and data layers, with the optional (fail-open) Redis/Socket.IO/SMTP tiers.
+
+The code is organised to mirror these layers:
 
 ```
 backend/
@@ -595,14 +1030,6 @@ backend/
   scripts/
     db-setup.js       creates the partial unique index Prisma cannot express
     seed.js           demo hospital (1 admin, 4 doctors, 3 patients, sample bookings)
-```
-
-```
-frontend/src/
-  pages/        patient/ (browse, appointments, profile), doctor/, admin/, Login, Register
-  components/   ui primitives, Protected route guard, ErrorBoundary, Skeleton loaders
-  context/      AuthContext (session), ToastContext (notifications)
-  api/          axios client (JWT interceptor, 401 cleanup)
 ```
 
 ### 7.2 The serializer contract
@@ -624,7 +1051,7 @@ key insight behind fixing the migration bug described in §9.
   `requireAuth`; all cross-role cases asserted in e2e (`SEC-06 … SEC-17`).
 - **Validation** — express-validator chains on every POST/PATCH, with nested
   rules for doctor weekly blocks; uniform `400 { error, details[] }` shape.
-- **Concurrency** — partial unique index backstop (§6.5), proven by a real
+- **Concurrency** — partial unique index backstop (§6.7), proven by a real
   two-request race test.
 
 ### 7.4 Optional-service wiring (fail-open)
@@ -648,6 +1075,8 @@ boundary-value analysis in
 
 ### 8.1 Types of testing performed
 
+**Table 4 — Types of Testing Performed.**
+
 | Type | Level | Tool | What it proves |
 | :--- | :--- | :--- | :--- |
 | **Unit testing** | Pure functions | Node built-in test runner (`node --test`) | Slot-grid expansion, date validation, lifecycle state machine — no I/O, no database |
@@ -659,6 +1088,8 @@ boundary-value analysis in
 | **Continuous testing** | CI | GitHub Actions | All of the above on every push and pull request |
 
 ### 8.2 Test cases and results
+
+**Table 5 — Test Cases and Results.**
 
 | Suite | Command | Coverage | Result |
 | :--- | :--- | :--- | :--- |
@@ -699,13 +1130,26 @@ the pipeline is green on `main`. The final measured state:
 | :--- | :--- |
 | Automated assertions | **93 passing** (21 unit + 72 end-to-end) |
 | Modules delivered with full CRUD | 4 (Patients, Doctors & Schedules, Appointments, Consultation Records) |
-| UML / CASE artefacts | Use case, class, sequence, DFD L0–L2, ERD, architecture |
+| UML / CASE artefacts | Use case, class, sequence, DFD L0–L2, ERD, component & layered architecture |
 | Role-separated dashboards | Patient, Doctor, Administrator |
 | CI status on `main` | Green — schema, seed, unit, e2e and production build all pass |
 
-**Screenshots** of every role journey (registration, booking, queue, ledger,
-consultation records, admin CRUD) are submitted as **Appendix A** of this report
-and are enumerated in [`screenshots/README.md`](../screenshots/README.md).
+The administrator console gives hospital-wide oversight over the whole dataset —
+statistics, accounts, and the appointment ledger:
+
+![Administrator overview](../screenshots/16-admin-overview.png)
+
+**Figure 18 — Administrator overview:** statistics cards (totals, today, non-zero revenue, status split).
+
+![Administrator patient accounts](../screenshots/19-admin-patients.png)
+
+**Figure 19 — Administrator, patient accounts:** account list with edit and (soft) deactivate actions.
+
+![Administrator appointment ledger](../screenshots/20-admin-ledger.png)
+
+**Figure 20 — Administrator, appointment ledger:** the hospital-wide ledger with filters and a populated consultation-fee column.
+
+Additional screenshots of every patient and doctor journey are embedded in §5.3.
 
 ### 9.2 Challenges faced
 
@@ -799,7 +1243,20 @@ end-to-end) wired into a CI pipeline.
 
 ---
 
+## References
+
+1. Node.js Foundation. *Node.js Documentation.* <https://nodejs.org/docs>
+2. OpenJS Foundation. *Express 4 Guide.* <https://expressjs.com>
+3. Meta Open Source. *React Documentation.* <https://react.dev>
+4. Vite. *Vite Guide.* <https://vite.dev>
+5. PostgreSQL Global Development Group. *PostgreSQL 16 Documentation.* <https://www.postgresql.org/docs/16/>
+6. Prisma. *Prisma ORM Documentation.* <https://www.prisma.io/docs>
+7. Socket.IO. *Socket.IO Documentation.* <https://socket.io/docs/v4/>
+8. Auth0. *JSON Web Tokens (jsonwebtoken).* <https://github.com/auth0/node-jsonwebtoken>
+9. express-validator. *Documentation.* <https://express-validator.github.io>
+
+---
+
 *Repository: `Mugetsu-1/Hospital-Booking-System`. See [`README.md`](../README.md)
-for setup, [`docs/`](./README.md) for all diagrams, and
-[`backend/tests/TEST_MATRIX.md`](../backend/tests/TEST_MATRIX.md) for the full QA
-matrix.*
+for setup and [`backend/tests/TEST_MATRIX.md`](../backend/tests/TEST_MATRIX.md)
+for the full QA matrix.*

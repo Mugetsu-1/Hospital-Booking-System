@@ -38,8 +38,9 @@ Auto-generated from the codebase ([gitdiagram](https://gitdiagram.com/mugetsu-1/
 the React SPA with its realtime and HTTP clients, the Express API with JWT/RBAC-guarded
 routes, the domain services (doctor directory & slots, booking/visit rules, slot computation,
 appointment-status state machine), and the persistence/integration tier (Prisma → PostgreSQL,
-plus the optional Redis cache, Socket.IO and Nodemailer). The layered Mermaid view lives in
-[`docs/architecture.md`](docs/architecture.md).
+plus the optional Redis cache, Socket.IO and Nodemailer). The full set of models —
+use case, class, sequence, DFD L0–L2, ERD, and the component & layered architecture
+views — is embedded inline in [the lab report, §6–§7](docs/LAB_REPORT.md#6-design--system-modeling).
 
 ## Screenshots
 
@@ -67,7 +68,7 @@ All 11 captured screens are listed in the
 
 | Document | Purpose |
 | :--- | :--- |
-| **[Diagrams](docs/README.md)** | Use Case · DFD L0–L2 · ERD · Sequence · Architecture (Mermaid) |
+| **[System models](docs/LAB_REPORT.md#6-design--system-modeling)** | Use Case · Class · Sequence · DFD L0–L2 · ERD · Architecture — inline Mermaid in the report |
 | **[Test Matrix](backend/tests/TEST_MATRIX.md)** | Black-box matrix, equivalence partitioning, BVA, RBAC cases |
 | **[Screenshot checklist](screenshots/README.md)** | 24 named UI captures for the report |
 
@@ -251,13 +252,11 @@ frontend/
     realtime.js           Socket.IO client (fail-open)
     utils/helpers.js      formatting and date-range helpers
 docs/
-  LAB_REPORT.md/.docx     the lab report (source of truth + generated Word file)
-  use-case · class-diagram · sequence-diagrams
-  dfd-context · dfd-level1 · dfd-level2-booking · erd · architecture
+  LAB_REPORT.md/.docx     the lab report (all diagrams inline; generated Word file)
   architecture-overview.webp  component / data-flow overview (README)
-  build-docx.mjs          renders Mermaid → PNG → .docx
-  capture-screenshots.mjs headless-Chromium capture for Appendix A
-screenshots/               UI evidence PNGs (report Appendix A)
+  build-docx.mjs          renders inline Mermaid → PNG → .docx
+  capture-screenshots.mjs headless-Chromium screenshot capture
+screenshots/               UI evidence PNGs (embedded in the report)
 backend/tests/TEST_MATRIX.md  black-box matrix, BVA, RBAC cases
 .github/workflows/main.yml CI pipeline
 ```
