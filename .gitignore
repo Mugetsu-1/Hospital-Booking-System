@@ -35,20 +35,7 @@ docs/LAB_REPORT.docx
 # Local working note — full chat-session log, not part of the deliverable
 CHAT_SESSION.md
 
-# Root folder: keep only .json files, gitignore all others
-# (package.json and package-lock.json are kept as project metadata)
-# All other root-level files are excluded
-!.gitignore
-package.json
-package-lock.json
-* .md
-* .json
-!package.json
-!package-lock.json
-# Root non-json files excluded
-/README\.md/
-/.changelog/
-/README\.md
+# Root project metadata is tracked alongside the source tree.
 
 # Docs folder: keep only .md and image files (*.webp, *.png, *.jpg, *.gif, *.svg)
 /docs/build-docx\.mjs
@@ -57,15 +44,11 @@ package-lock.json
 /docs/package-lock\.json
 /docs/package\.json
 
-# Backend: keep only source files, gitignore env files and deps
+# Backend: keep source files, manifests, and lockfiles; ignore env files and deps
 /backend/.env
-/backend/package-lock\.json
-/backend/package\.json
 
-# Frontend: keep only source files, gitignore env files and deps
+# Frontend: keep source files, manifests, and lockfiles; ignore env files and deps
 /frontend/.env\.example
-/frontend/package-lock\.json
-/frontend/package\.json
 
 # Screenshots: keep only images and readme
 /screenshots/README\.md
