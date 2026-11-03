@@ -1,23 +1,45 @@
 # Hospital Doctor Appointment Booking System
 
-[![CI](https://github.com/Mugetsu-1/Hospital-Booking-System/actions/workflows/main.yml/badge.svg)](https://github.com/Mugetsu-1/Hospital-Booking-System/actions/workflows/main.yml)
-![Node](https://img.shields.io/badge/Node-20%2B-339933?logo=node.js&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
-![License](https://img.shields.io/badge/License-Academic-blue)
+A full-stack web application for patient doctor discovery, appointment booking, and practice management.
+## Features
 
-**Software Engineering Lab Project — Full-Stack CRUD Application on PostgreSQL**
+- **Patient**: Register, search doctors, book slots, manage appointments
+- **Doctor**: View queue, confirm/cancel bookings, complete consultations
+- **Admin**: Manage doctors/patients, appointment ledger, user accounts
 
-| | |
-| :--- | :--- |
-| **Author** | Saugat Bikram Thapa (80117731, BSc.CSIT) |
-| **Subject** | Software Engineering · ACHS |
-| **Instructor** | Saroja Bhandari |
-| **Repository** | [Mugetsu-1/Hospital-Booking-System](https://github.com/Mugetsu-1/Hospital-Booking-System) |
-| **Branch** | `main` · CI: [`.github/workflows/main.yml`](.github/workflows/main.yml) |
-| **Status** | ✅ 21 unit + 72 e2e assertions passing · production build green |
+## Architecture
 
-> **Abstract.** A hospital appointment booking system where patients discover
+![System architecture](docs/architecture-overview.webp)
+
+## Features
+
+- **Patient**: Register, search doctors, book slots, manage appointments
+- **Doctor**: View queue, confirm/cancel bookings, complete consultations
+- **Admin**: Manage doctors/patients, appointment ledger, user accounts
+
+## Screenshots
+
+| Register | Login |
+| :---: | :---: |
+| ![Register](screenshots/01-register.png) | ![Login](screenshots/02-login.png) |
+
+| Doctor directory | Slot picker |
+| :---: | :---: |
+| ![Doctor directory](screenshots/03-browse-doctors.png) | ![Slot picker](screenshots/04-slot-picker.png) |
+
+| Appointment history | Doctor queue |
+| :---: | :---: |
+| ![Appointments](screenshots/08-appointment-history.png) | ![Doctor queue](screenshots/11-doctor-queue-day.png) |
+
+| Admin overview | Admin ledger |
+| :---: | :---: |
+| ![Admin dashboard](screenshots/16-admin-overview.png) | ![Appointment ledger](screenshots/20-admin-ledger.png) |
+
+## Key Links
+
+- **Lab Report**: [docs/LAB_REPORT.md](docs/LAB_REPORT.md)
+- **Screenshots**: [screenshots/README.md](screenshots/README.md)
+- **GitHub**: [Mugetsu-1/Hospital-Booking-System](https://github.com/Mugetsu-1/Hospital-Booking-System)
 > doctors, book *computed* availability slots, and reschedule or cancel under
 > enforced business rules; doctors run day/week/month queues, confirm and
 > complete visits, and write governed consultation records; administrators
