@@ -2,18 +2,6 @@
 
 A full-stack web application for patient doctor discovery, appointment scheduling, and practice management.
 
-## Table of Contents
-
-- [About](#about)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Screenshots](#screenshots)
-- [Links](#links)
-
 ## About
 
 The Hospital Doctor Appointment Booking System is a full-stack web application that enables patients to discover doctors, book available appointment slots, manage their consultations, and allows doctors and administrators to manage the appointment lifecycle. Engineered with a concurrency-safe slot model using PostgreSQL partial unique indexes, JWT authentication, and RBAC role-based access control.
