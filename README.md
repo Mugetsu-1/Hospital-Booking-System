@@ -75,6 +75,15 @@ npm run build
 | :---: | :---: |
 | ![Admin dashboard](screenshots/16-admin-overview.png) | ![Appointment ledger](screenshots/20-admin-ledger.png) |
 
+## Architecture
+
+![Hospital booking system architecture](architecture-overview.webp)
+
+## Documentation
+
+- [Full lab report](LAB_REPORT.md)
+- [MIT License](LICENSE)
+
 ## Links
 
 - **GitHub Repository**: [https://github.com/Mugetsu-1/Hospital-Booking-System](https://github.com/Mugetsu-1/Hospital-Booking-System)
