@@ -200,6 +200,49 @@ fail-open); the directory search is attribute-based rather than full-text; and
 the deployment target is a locally run PostgreSQL instance rather than a hosted
 production cluster. These are revisited as future work in §9.4.
 
+### 2.2 Background Study
+
+Healthcare appointment systems combine ordinary CRUD operations with
+time-sensitive and privacy-sensitive rules. A doctor may have recurring weekly
+working blocks, but the availability shown to a patient must also exclude
+booked, cancelled, and past slots. The system therefore treats a schedule as
+source data and computes bookable slots for a requested date instead of
+accepting arbitrary patient-entered times.
+
+The project also applies three general software-engineering principles to this
+domain. First, authentication and authorization are separate concerns:
+identity is established with JWT, while role and ownership checks protect each
+operation. Second, business invariants are enforced at the strongest practical
+boundary; the database unique index is the final protection against a booking
+race. Third, medical information is exposed through controlled DTOs and
+time-bounded editing rules rather than raw database rows.
+
+### 2.3 Related Systems and Literature Review
+
+Existing online appointment platforms commonly provide doctor search,
+availability calendars, booking, reminders, and patient history. They are useful
+references for the expected user journey, but they generally hide their
+consistency and authorization mechanisms. This project focuses on the
+engineering decisions behind those features: a relational schema with
+referential integrity, a lifecycle state machine, explicit RBAC, and automated
+negative tests.
+
+The technical design follows established documentation for REST APIs,
+PostgreSQL constraints, Prisma data access, JWT-based sessions, React
+single-page applications, and automated CI. These sources informed tool usage
+and terminology; the requirements and implementation decisions remain specific
+to this hospital booking system and are described in Sections 5–8.
+
+### 2.4 Report Organization
+
+Section 3 states the project objectives. Section 4 identifies the tools,
+technology stack, CASE notation, and development process. Section 5 translates
+the problem into user, system, functional, and non-functional requirements.
+Section 6 presents the UML, DFD, ERD, and architecture models. Section 7
+explains the implementation, Section 8 records the test strategy and results,
+and Section 9 discusses observations, challenges, insights, and future work.
+Section 10 concludes the report and records the learning outcomes.
+
 ---
 
 ## 3. Objective
@@ -399,6 +442,26 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | **Reliability** | Atomic slot check + partial unique index; fail-open optional services | `prisma/schema.prisma`, `src/db.js`, `services/*` |
 | **Maintainability** | Layered architecture, pure domain module, single serializer contract | `src/domain/`, `src/utils/serialize.js` |
 | **Testability** | Offline unit suite + full HTTP e2e suite in CI | `tests/` (21 + 72 assertions) |
+
+### 5.5 Feasibility Analysis
+
+**Technical feasibility.** The system uses widely supported open-source tools:
+React and Vite for the browser client, Express for the API, PostgreSQL and
+Prisma for persistence, and Node's built-in test runner for unit tests. The
+optional Redis, Socket.IO, and SMTP integrations are isolated and fail-open, so
+the core system can be demonstrated with only Node.js, npm, and PostgreSQL.
+
+**Operational feasibility.** Patients, doctors, and administrators receive
+separate role-based workflows rather than a single overloaded interface. The
+computed slot picker, status filters, confirmation dialogs, and toast messages
+reduce manual entry and make the main tasks understandable to non-technical
+users.
+
+**Economic and schedule feasibility.** The project can be developed and run
+with free/open-source software and a local PostgreSQL instance. The iterative
+workflow delivers authentication, directory, booking, lifecycle, consultation,
+and administration as independently testable increments, which keeps the
+scope suitable for a single-student lab project.
 
 ---
 
@@ -1032,7 +1095,34 @@ backend/
     seed.js           demo hospital (1 admin, 4 doctors, 3 patients, sample bookings)
 ```
 
-### 7.2 The serializer contract
+### 7.2 Implementation of Major Modules
+
+**Authentication and patient module.** Registration validates the incoming
+profile, hashes the password with bcrypt, and creates a patient account.
+Login returns a signed JWT; protected requests reload the account so
+deactivated users cannot continue using an old token. Patient routes expose
+profile updates, appointment history, and consultation records only to the
+authenticated owner.
+
+**Doctor and schedule module.** Administrators create doctor accounts and
+profiles, while doctors maintain their own fee, availability flag, and weekly
+working blocks. The slot utility expands a selected weekday's blocks into
+fixed-duration intervals, removes live bookings, and rejects past or invalid
+times before the controller attempts a write.
+
+**Appointment module.** Booking, rescheduling, cancellation, confirmation,
+completion, and administrative purge are represented as explicit API actions.
+The pure appointment state machine rejects illegal transitions. Cancellation
+and notes-edit policies are evaluated on the server, and the database index
+enforces the live-slot invariant during concurrent requests.
+
+**Consultation and administration modules.** Doctors complete visits with
+diagnosis, prescription, and consultation notes, with a 24-hour edit window.
+Administrators can manage doctor and patient accounts, inspect the hospital
+ledger, and purge inaccurate records. These capabilities are protected by
+role gates and ownership checks rather than frontend visibility alone.
+
+### 7.3 The serializer contract
 
 A single serializer (`utils/serialize.js`) governs the API's output shape:
 `publicUser()` strips the password hash, `doctorSummary()` and
@@ -1041,7 +1131,7 @@ A single serializer (`utils/serialize.js`) governs the API's output shape:
 single-contract approach keeps every client read site consistent and was the
 key insight behind fixing the migration bug described in §9.
 
-### 7.3 Security implementation
+### 7.4 Security implementation
 
 - **Passwords** — bcrypt, 10 salt rounds; the hash is stripped by `publicUser()`
   before any row leaves the API (verified by e2e `SEC-03`).
@@ -1054,7 +1144,7 @@ key insight behind fixing the migration bug described in §9.
 - **Concurrency** — partial unique index backstop (§6.7), proven by a real
   two-request race test.
 
-### 7.4 Optional-service wiring (fail-open)
+### 7.5 Optional-service wiring (fail-open)
 
 - **Redis cache** — `getJSON/setJSON/delPrefix` become no-ops when `REDIS_URL` is
   unset; directory and slot grids are cached per query signature and invalidated
@@ -1169,12 +1259,11 @@ Additional screenshots of every patient and doctor journey are embedded in §5.3
 - **Time-based rules are hard to test honestly.** A 2-hour cancellation cutoff and a
   24-hour notes window cannot be validated by waiting. The suite instead back-dates
   rows through Prisma ("time travel") so the exact boundaries can be probed.
-- **A green local run that was red in CI.** The suite passed locally for months but
-  failed every CI run. The cause was a genuine runtime difference, not flakiness:
-  `node --test` only gained glob support in Node 21, while CI pins Node 20, which
-  treated the glob as a literal filename. Fixing it properly meant verifying the
-  runner behaviour against real Node 20 *and* Node 24 binaries rather than trusting
-  one environment.
+- **A green local run that was red in CI.** The suite passed locally but failed
+  when the runner, database service, and local assumptions differed. The
+  solution was to make the CI environment explicit: it provisions PostgreSQL
+  16, uses a pinned Node.js runtime, applies the schema, seeds data, waits for
+  the health endpoint, and then runs the same test and build commands.
 
 ### 9.3 Insights
 
