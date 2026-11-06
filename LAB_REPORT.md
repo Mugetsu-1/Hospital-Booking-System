@@ -1,8 +1,8 @@
 <!--
   ACHS Software Engineering Lab — Consolidated Lab Report (self-contained).
   All diagrams are inline Mermaid (rendered on GitHub and rasterised to PNG for
-  the Word export by build-docx.mjs). Screenshots are embedded in context from
-  ../screenshots. Cover-page details are filled in; Submission Date is left blank
+  Screenshots are embedded in context from screenshots. Cover-page details are
+  filled in; Submission Date is left blank
   for the student to complete at submission time.
 -->
 
@@ -298,9 +298,7 @@ All tools listed here are actually used by the repository; nothing is aspiration
 ### 4.1 CASE tools
 
 All models are authored in **Mermaid** and embedded **inline in Section 6**, so
-they render automatically on GitHub and are rasterised to PNG for the submitted
-Word document by [`build-docx.mjs`](./build-docx.mjs) — the report and its
-diagrams can never drift apart.
+they render automatically on GitHub alongside the report.
 
 | Artefact | Where | Type |
 | :--- | :--- | :--- |
@@ -371,15 +369,15 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | Update | Edit contact info, address, emergency contact | `PATCH /api/patients/:id` |
 | Delete | Soft-delete / deactivate account (records preserved) | `DELETE /api/patients/:id` (admin) |
 
-![Patient registration](../screenshots/01-register.png)
+![Patient registration](screenshots/01-register.png)
 
 **Figure 1 — Patient registration:** form validation, success toast, and redirect to the appointments page.
 
-![Sign-in](../screenshots/02-login.png)
+![Sign-in](screenshots/02-login.png)
 
 **Figure 2 — Sign-in:** JWT login with a signed-in toast and role-based redirect.
 
-![Patient profile](../screenshots/10-profile.png)
+![Patient profile](screenshots/10-profile.png)
 
 **Figure 3 — Patient profile:** editing contact details with a saved-changes toast.
 
@@ -392,11 +390,11 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | Update | Doctor edits own hours, fee, availability; admin edits names | `PATCH /api/doctors/:id` |
 | Delete | Admin deactivates / reactivates (soft delete) | `PATCH /api/doctors/:id/status` |
 
-![Doctor directory](../screenshots/03-browse-doctors.png)
+![Doctor directory](screenshots/03-browse-doctors.png)
 
 **Figure 4 — Doctor directory:** search and filter by name, specialisation, weekday and fee, with schedule chips.
 
-![Administrator doctor management](../screenshots/17-admin-doctors.png)
+![Administrator doctor management](screenshots/17-admin-doctors.png)
 
 **Figure 5 — Administrator, doctor management:** create / edit / deactivate controls over the directory.
 
@@ -409,15 +407,15 @@ frontend bundle — so `main` is always in a known-good, test-passing state.
 | Update | Patient reschedules (→ Pending); doctor/admin drive lifecycle | `POST /:id/reschedule`, `PATCH /:id/status` |
 | Delete | Cancel (releases slot); admin purges permanently | `POST /:id/cancel`, `DELETE /:id` |
 
-![Slot picker](../screenshots/04-slot-picker.png)
+![Slot picker](screenshots/04-slot-picker.png)
 
 **Figure 6 — Slot picker:** a computed slot grid from the doctor's weekly blocks; booked times are not offered.
 
-![Appointment history](../screenshots/08-appointment-history.png)
+![Appointment history](screenshots/08-appointment-history.png)
 
 **Figure 7 — Appointment history:** status tabs (All / Pending / Confirmed / Completed / Cancelled) and date filters.
 
-![Doctor day queue](../screenshots/11-doctor-queue-day.png)
+![Doctor day queue](screenshots/11-doctor-queue-day.png)
 
 **Figure 8 — Doctor day queue:** pending/confirmed rows with patient age / gender / phone and status actions.
 
@@ -1227,15 +1225,15 @@ the pipeline is green on `main`. The final measured state:
 The administrator console gives hospital-wide oversight over the whole dataset —
 statistics, accounts, and the appointment ledger:
 
-![Administrator overview](../screenshots/16-admin-overview.png)
+![Administrator overview](screenshots/16-admin-overview.png)
 
 **Figure 18 — Administrator overview:** statistics cards (totals, today, non-zero revenue, status split).
 
-![Administrator patient accounts](../screenshots/19-admin-patients.png)
+![Administrator patient accounts](screenshots/19-admin-patients.png)
 
 **Figure 19 — Administrator, patient accounts:** account list with edit and (soft) deactivate actions.
 
-![Administrator appointment ledger](../screenshots/20-admin-ledger.png)
+![Administrator appointment ledger](screenshots/20-admin-ledger.png)
 
 **Figure 20 — Administrator, appointment ledger:** the hospital-wide ledger with filters and a populated consultation-fee column.
 

@@ -78,7 +78,9 @@ npm run build
 ## Links
 
 - **GitHub Repository**: [https://github.com/Mugetsu-1/Hospital-Booking-System](https://github.com/Mugetsu-1/Hospital-Booking-System)
-- **Lab Report**: [docs/LAB_REPORT.md](docs/LAB_REPORT.md)
+- **Architecture overview**: [architecture-overview.webp](architecture-overview.webp)
+- **Lab Report**: [LAB_REPORT.md](LAB_REPORT.md)
+- **License**: [MIT License](LICENSE)
 - **CI Pipeline**: [GitHub Actions](https://github.com/Mugetsu-1/Hospital-Booking-System/actions)
 - **Author**: Saugat Bikram Thapa
 
@@ -115,11 +117,9 @@ frontend/
     realtime.js           Socket.IO client (fail-open)
     utils/helpers.js      formatting and date-range helpers
 
-docs/
-  LAB_REPORT.md           the lab report (all diagrams inline; generated Word file)
-  architecture-overview.webp  component / data-flow overview
-  build-docx.mjs          renders inline Mermaid → PNG → .docx
-  capture-screenshots.mjs headless-Chromium screenshot capture
+LAB_REPORT.md             the lab report (all diagrams inline)
+architecture-overview.webp component / data-flow overview
+LICENSE                   MIT license
 screenshots/               UI evidence PNGs (embedded in the report)
 backend/tests/TEST_MATRIX.md  black-box matrix, BVA, RBAC cases
 .github/workflows/main.yml CI pipeline
@@ -187,4 +187,3 @@ cd backend && npm run db:setup
 ```bash
 npm run seed
 ```
-
